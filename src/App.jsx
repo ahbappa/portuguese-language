@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { A1_UNITS } from "./data/a1.js";
+import { A2_UNITS } from "./data/a2.js";
+import { EXAM_BANK, EXTRA_DIALOGUES, EXTRA_STORIES } from "./data/exam.js";
 
 /* ============================================================
-   APRENDE! — European Portuguese for Absolute Beginners
-   Phase 1: A0 level · audio · listening · dialogues · gamification
+   APRENDE! — European Portuguese · A0 → A1 → A2 + Final Exam
+   Tabbed app · audio · listening · dialogues · certificate
    ============================================================ */
 
 /* ---------- AUDIO (Web Speech API, prefers pt-PT) ---------- */
@@ -615,7 +618,19 @@ const STORIES = [
       { t: "mc", q: "“vai ao mercado” — “ao” is:", opts: ["a + o", "de + o", "em + o", "just a word"], a: 0 },
     ],
   },
+  ...EXTRA_STORIES,
 ];
+
+/* Merge Phase-1 dialogues with the new ones */
+DIALOGUES.push(...EXTRA_DIALOGUES);
+
+/* ============ LEVEL STRUCTURE (A0 from above + A1/A2 imported) ============ */
+const LEVELS = [
+  { id: "A0", name: "A0 — Survival", flag: "🛟", blurb: "Day-one basics for life in Portugal", units: UNITS },
+  { id: "A1", name: "A1 — Foundations", flag: "🌱", blurb: "Verbs, tenses and everyday situations", units: A1_UNITS },
+  { id: "A2", name: "A2 — Building", flag: "🏗️", blurb: "Past, future and real conversations", units: A2_UNITS },
+];
+const ALL_UNITS = LEVELS.flatMap((l) => l.units); // ordered list for unlock logic
 
 /* ============ LISTENING DRILL POOLS (free practice) ============ */
 const DICTATION_POOL = [
@@ -1120,24 +1135,150 @@ function AppShell({ headerProps, onHome, children }) {
     </div>
   );
 }
+function SubScreen({ headerProps, onBack, children }) {
+  return (
+    <div className="app">
+      <GlobalStyle />
+      <AppHeader {...headerProps} />
+      <button className="btn ghost small back" onClick={onBack}>← Back</button>
+      {children}
+    </div>
+  );
+}
+
+/* =================== FINAL EXAM =================== */
+function FinalExam({ onXP, onAward, onBack, allUnitsDone }) {
+  const EXAM_SIZE = 20;
+  const PASS_PCT = 0.6;
+  const [name, setName] = useState("");
+  const [started, setStarted] = useState(false);
+  const [done, setDone] = useState(null);
+  const examQs = useMemo(
+    () => [...EXAM_BANK].sort(() => Math.random() - 0.5).slice(0, EXAM_SIZE),
+    [started]
+  );
+
+  if (done !== null) {
+    const pct = done / EXAM_SIZE;
+    const passed = pct >= PASS_PCT;
+    // estimate level by performance
+    const estLevel = pct >= 0.85 ? "A2" : pct >= 0.65 ? "A1" : pct >= 0.45 ? "A0+" : "A0";
+    return (
+      <div className="panel center">
+        <div className="big-emoji">{passed ? "🎓" : "📚"}</div>
+        <h2>{passed ? "Exam passed!" : "Keep practising"}</h2>
+        <p>You scored <b>{done} / {EXAM_SIZE}</b> ({Math.round(pct * 100)}%).</p>
+        <p className="muted">Indicative level: <b>{estLevel}</b></p>
+        {passed ? (
+          <>
+            <p className="muted">Tap below to generate your certificate.</p>
+            <button className="btn primary wide" onClick={() => onAward({ name: name || "Aluno(a)", score: done, total: EXAM_SIZE, level: estLevel })}>
+              🏆 Get my certificate →
+            </button>
+          </>
+        ) : (
+          <p className="muted">You need {Math.round(PASS_PCT * 100)}% to pass. Review the weaker units and try again — the exam reshuffles each time.</p>
+        )}
+        <button className="btn ghost small" style={{ marginTop: 14 }} onClick={onBack}>← Back</button>
+      </div>
+    );
+  }
+
+  if (!started) {
+    return (
+      <div className="panel">
+        <span className="eyebrow">🎓 Final Exam</span>
+        <h2 style={{ margin: "8px 0", color: "var(--deep)" }}>Test your level</h2>
+        <p className="lesson-body">
+          {EXAM_SIZE} mixed questions from across A0, A1 and A2 — vocabulary, grammar, listening and prices.
+          Score {Math.round(PASS_PCT * 100)}% to pass and earn a certificate showing your indicative CEFR level.
+        </p>
+        {!allUnitsDone && (
+          <div className="warn-soft">💡 Tip: you haven't finished every unit yet. You can still take the exam, but you'll score higher after completing the lessons.</div>
+        )}
+        <label className="field-label">Your name (for the certificate)</label>
+        <input className="answer" style={{ width: "100%", marginBottom: 12 }} value={name}
+          placeholder="e.g. Alex Silva" onChange={(e) => setName(e.target.value)} />
+        <button className="btn primary wide" onClick={() => setStarted(true)}>Start the exam →</button>
+        <p className="tiny" style={{ marginTop: 10, color: "var(--muted)" }}>
+          Note: this is an <b>indicative</b> self-assessment, not an official certification. Official European Portuguese exams (CIPLE/CAPLE) are run by approved institutes.
+        </p>
+        <button className="btn ghost small" style={{ marginTop: 8 }} onClick={onBack}>← Back</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel">
+      <div className="quiz-head"><span className="eyebrow">🎓 Final Exam · no XP shown until the end</span></div>
+      <Quiz questions={examQs} titleLabel="Exam" onXP={onXP} onDone={(score) => setDone(score)} />
+    </div>
+  );
+}
+
+/* =================== CERTIFICATE =================== */
+function Certificate({ data, onBack }) {
+  const date = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const print = () => window.print();
+  return (
+    <div>
+      <div className="cert" id="cert">
+        <div className="cert-border">
+          <div className="cert-flag">🇵🇹</div>
+          <div className="cert-eyebrow">APRENDE! · Português Europeu</div>
+          <h1 className="cert-title">Certificate of Achievement</h1>
+          <p className="cert-sub">This certifies that</p>
+          <div className="cert-name">{data.name}</div>
+          <p className="cert-sub">has completed the Aprende! European Portuguese course and demonstrated an indicative proficiency level of</p>
+          <div className="cert-level">{data.level}</div>
+          <p className="cert-score">Final exam score: {data.score} / {data.total} ({Math.round((data.score / data.total) * 100)}%)</p>
+          <div className="cert-foot">
+            <div><div className="cert-line">{date}</div><div className="cert-lbl">Date</div></div>
+            <div><div className="cert-line cert-sig">Aprende!</div><div className="cert-lbl">Issued by</div></div>
+          </div>
+          <p className="cert-note">Indicative self-assessment based on CEFR descriptors. Not an official government or institutional certification.</p>
+        </div>
+      </div>
+      <div className="row gap no-print" style={{ marginTop: 14 }}>
+        <button className="btn ghost wide" onClick={onBack}>← Back</button>
+        <button className="btn primary wide" onClick={print}>🖨️ Print / Save as PDF</button>
+      </div>
+    </div>
+  );
+}
+
+/* =================== TAB BAR (stable, module-level) =================== */
+function TabBar({ active, onTab }) {
+  const tabs = [
+    { id: "learn", icon: "📚", label: "Learn" },
+    { id: "practice", icon: "🎮", label: "Practice" },
+    { id: "listen", icon: "🎧", label: "Listen" },
+    { id: "exam", icon: "🎓", label: "Exam" },
+  ];
+  return (
+    <nav className="tabbar">
+      {tabs.map((t) => (
+        <button key={t.id} className={"tab" + (active === t.id ? " active" : "")} onClick={() => onTab(t.id)}>
+          <span className="tab-icon">{t.icon}</span>
+          <span className="tab-label">{t.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
 
 /* =================== MAIN APP =================== */
 export default function App() {
-  const [screen, setScreen] = useState({ name: "home" });
+  const [tab, setTab] = useState("learn");
+  const [screen, setScreen] = useState({ name: null }); // null = show tab home; else a sub-screen
   const [xp, setXp] = useState(() => loadSaved("xp", 0));
-  const [streakBest, setStreakBest] = useState(0);
   const [completed, setCompleted] = useState(() => loadSaved("completed", []));
+  const [cert, setCert] = useState(() => loadSaved("cert", null));
   const [voiceOk, setVoiceOk] = useState(true);
 
   useEffect(() => { saveProgress("xp", xp); }, [xp]);
   useEffect(() => { saveProgress("completed", completed); }, [completed]);
-
-  const resetProgress = () => {
-    if (window.confirm("Reset all progress (XP and completed units)?")) {
-      setXp(0); setCompleted([]);
-      saveProgress("xp", 0); saveProgress("completed", []);
-    }
-  };
+  useEffect(() => { saveProgress("cert", cert); }, [cert]);
 
   useEffect(() => {
     if (!window.speechSynthesis) { setVoiceOk(false); return; }
@@ -1148,167 +1289,278 @@ export default function App() {
   }, []);
 
   const addXP = (n) => setXp((x) => x + n);
-  const go = (name, params = {}) => setScreen({ name, ...params });
-  const level = xp < 150 ? 1 : xp < 400 ? 2 : xp < 800 ? 3 : 4;
-  const lvlMax = xp < 150 ? 150 : xp < 400 ? 400 : xp < 800 ? 800 : 1500;
+  const openScreen = (name, params = {}) => setScreen({ name, ...params });
+  const closeScreen = () => setScreen({ name: null });
+  const switchTab = (t) => { setScreen({ name: null }); setTab(t); };
 
+  const xpLevel = xp < 150 ? 1 : xp < 400 ? 2 : xp < 800 ? 3 : xp < 1400 ? 4 : 5;
+  const lvlMax = xp < 150 ? 150 : xp < 400 ? 400 : xp < 800 ? 800 : xp < 1400 ? 1400 : 2200;
+
+  const resetProgress = () => {
+    if (window.confirm("Reset ALL progress — XP, completed units and certificate?")) {
+      setXp(0); setCompleted([]); setCert(null);
+      saveProgress("xp", 0); saveProgress("completed", []); saveProgress("cert", null);
+    }
+  };
+
+  // unlock logic across all levels in order
   const unlockedCount = completed.length + 1;
-  const a0done = completed.length >= UNITS.length;
+  const isUnlocked = (unitId) => {
+    const idx = ALL_UNITS.findIndex((u) => u.id === unitId);
+    return idx < unlockedCount;
+  };
+  const allUnitsDone = completed.length >= ALL_UNITS.length;
 
-  const headerProps = { xp, level, go };
+  const headerProps = { xp, level: xpLevel, go: () => switchTab("learn") };
 
-  /* ---------- HOME ---------- */
-  if (screen.name === "home") {
-    return (
-      <div className="app">
-        <GlobalStyle />
-        <AppHeader {...headerProps} />
+  /* ---------- SUB-SCREENS (open above any tab; SubScreen is stable/module-level) ---------- */
+  if (screen.name) {
+
+    if (screen.name === "unit") {
+      const unit = ALL_UNITS.find((u) => u.id === screen.id);
+      return (
+        <SubScreen headerProps={headerProps} onBack={closeScreen}>
+          <UnitPlayer unit={unit} onXP={addXP} onBack={closeScreen} alreadyDone={completed.includes(unit.id)}
+            onPass={() => { if (!completed.includes(unit.id)) { setCompleted((c) => [...c, unit.id]); addXP(40); } closeScreen(); }} />
+        </SubScreen>
+      );
+    }
+    if (screen.name === "flash") return <SubScreen headerProps={headerProps} onBack={closeScreen}><Flashcards catKey={screen.cat} onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "match") return <SubScreen headerProps={headerProps} onBack={closeScreen}><Matching catKey={screen.cat} onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "story") return <SubScreen headerProps={headerProps} onBack={closeScreen}><Story story={STORIES.find((s) => s.id === screen.id)} onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "dialogue") return <SubScreen headerProps={headerProps} onBack={closeScreen}><Dialogue d={DIALOGUES.find((d) => d.id === screen.id)} onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "dictation") return <SubScreen headerProps={headerProps} onBack={closeScreen}><Dictation onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "listen") return <SubScreen headerProps={headerProps} onBack={closeScreen}><ListenChoose onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "numlisten") return <SubScreen headerProps={headerProps} onBack={closeScreen}><NumberListening onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "browse") {
+      return (
+        <SubScreen headerProps={headerProps} onBack={closeScreen}>
+          {Object.entries(VOCAB).map(([k, c]) => (
+            <div className="panel" key={k}>
+              <span className="eyebrow">{c.icon} {c.label}</span>
+              <div className="vocab-list">
+                {c.words.map((w, i) => (
+                  <div className="vocab-row" key={i}>
+                    <span className={"vw" + (w.g ? " g-" + w.g : "")}>{w.pt}</span>
+                    <span className="ve">{w.en}</span>
+                    <Speak text={w.pt} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </SubScreen>
+      );
+    }
+  }
+
+  /* ---------- TAB CONTENT ---------- */
+  let body = null;
+
+  if (tab === "learn") {
+    body = (
+      <>
         <div className="hero">
           <div className="hero-tiles" aria-hidden="true">◆ ◇ ◆ ◇ ◆ ◇ ◆ ◇ ◆</div>
           <h1>Português Europeu</h1>
-          <p className="hero-sub">A0 · Absolute beginner — built for life in Portugal 🇵🇹</p>
+          <p className="hero-sub">A0 → A1 → A2 · built for life in Portugal 🇵🇹</p>
           <Bar value={xp} max={lvlMax} />
-          <div className="tiny center-text">{xp} / {lvlMax} XP to next level · progress is saved on this device</div>
+          <div className="tiny center-text">{xp} / {lvlMax} XP to next level · {completed.length}/{ALL_UNITS.length} units done · saved on this device</div>
           {!voiceOk && <div className="warn">⚠️ Your browser has no speech engine — audio buttons won't play. Try Chrome or Edge.</div>}
         </div>
 
         <details className="how-details">
           <summary>📘 New here? How the app works (tap to read)</summary>
           <div className="how-box">
-            <div className="how-row"><span className="how-num">📦</span><div>A <b>unit</b> is one bite-sized topic (like “Survival Phrases”). The course is 6 units that build on each other.</div></div>
-            <div className="how-row"><span className="how-num">📖</span><div>Each unit starts with a few <b>lesson cards</b> — short pages that teach words and rules. Tap 🔊 to hear them, 🐢 for slow audio.</div></div>
-            <div className="how-row"><span className="how-num">🎯</span><div>At the end is a <b>checkpoint</b> — a short quiz. Score <b>4 out of 6</b> to pass the unit and unlock the next one. Retry as often as you like.</div></div>
-            <div className="how-row"><span className="how-num">🔒</span><div>Locked units open automatically once you pass the one before. <b>Free practice</b> below (flashcards, games, listening) is open anytime — no unlocking needed.</div></div>
+            <div className="how-row"><span className="how-num">📦</span><div>A <b>unit</b> is one bite-sized topic. The course runs across three levels — <b>A0, A1, A2</b> — that build on each other.</div></div>
+            <div className="how-row"><span className="how-num">📖</span><div>Each unit has <b>lesson cards</b> that teach words and rules. Tap 🔊 to hear them, 🐢 for slow audio.</div></div>
+            <div className="how-row"><span className="how-num">🎯</span><div>Each unit ends with a <b>checkpoint</b> quiz. Score <b>4 of 6</b> to pass and unlock the next unit. Retry freely.</div></div>
+            <div className="how-row"><span className="how-num">🎓</span><div>Finish the levels, then take the <b>Final Exam</b> (Exam tab) to get your level estimate and a printable certificate.</div></div>
           </div>
         </details>
 
+        {LEVELS.map((lv) => {
+          const lvDone = lv.units.filter((u) => completed.includes(u.id)).length;
+          return (
+            <section key={lv.id}>
+              <div className="section-head">
+                <h2>{lv.flag} Level {lv.name}</h2>
+                <span className="tiny">{lvDone}/{lv.units.length} units</span>
+              </div>
+              <p className="level-blurb">{lv.blurb}</p>
+              <div className="unit-list">
+                {lv.units.map((u, i) => {
+                  const locked = !isUnlocked(u.id);
+                  const done = completed.includes(u.id);
+                  return (
+                    <button key={u.id} disabled={locked} className={"unit-card" + (done ? " done" : "") + (locked ? " locked" : "")}
+                      onClick={() => openScreen("unit", { id: u.id })}>
+                      <span className="unit-icon">{locked ? "🔒" : u.icon}</span>
+                      <span className="unit-text">
+                        <span className="unit-title">{i + 1}. {u.title} {done && "✓"}</span>
+                        <span className="unit-desc">{u.desc}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+
+        <div className={"unit-card milestone" + (allUnitsDone ? "" : " locked")} style={{ margin: "8px 0" }}
+          onClick={() => allUnitsDone && switchTab("exam")} role="button">
+          <span className="unit-icon">{allUnitsDone ? "🎓" : "🔒"}</span>
+          <span className="unit-text">
+            <span className="unit-title">All levels complete{allUnitsDone ? "! Parabéns! 🎉" : ""}</span>
+            <span className="unit-desc">{allUnitsDone ? "Head to the Exam tab to test your level and earn your certificate." : "Finish all units across A0, A1 and A2 to unlock the final milestone."}</span>
+          </span>
+        </div>
+      </>
+    );
+  }
+
+  if (tab === "practice") {
+    body = (
+      <>
+        <div className="tab-hero">
+          <h1>🎮 Practice</h1>
+          <p className="hero-sub-dark">Free play — no unlocking needed. Drill vocab, match words, read stories and act out real conversations.</p>
+        </div>
         <section>
-          <div className="section-head"><h2>🇵🇹 Level A0 — Survival</h2><span className="tiny">{completed.length}/{UNITS.length} units · pass each quiz with 4/6 to unlock the next</span></div>
-          <div className="unit-list">
-            {UNITS.map((u, i) => {
-              const locked = i >= unlockedCount;
-              const done = completed.includes(u.id);
-              return (
-                <button key={u.id} disabled={locked} className={"unit-card" + (done ? " done" : "") + (locked ? " locked" : "")}
-                  onClick={() => go("unit", { id: u.id })}>
-                  <span className="unit-icon">{locked ? "🔒" : u.icon}</span>
-                  <span className="unit-text">
-                    <span className="unit-title">{i + 1}. {u.title} {done && "✓"}</span>
-                    <span className="unit-desc">{u.desc}</span>
-                  </span>
-                </button>
-              );
-            })}
-            <div className={"unit-card milestone" + (a0done ? "" : " locked")}>
-              <span className="unit-icon">{a0done ? "🎓" : "🔒"}</span>
-              <span className="unit-text">
-                <span className="unit-title">A0 complete{a0done ? "! Parabéns! 🎉" : ""}</span>
-                <span className="unit-desc">{a0done ? "Level A1, A2 and the Final Exam + certificate arrive in Phase 2 — ask Claude to build it!" : "Finish all units to clear level A0. A1, A2 & the certified final exam come in Phase 2."}</span>
-              </span>
-            </div>
+          <div className="section-head"><h2>🃏 Vocabulary games</h2></div>
+          <div className="tool-grid">
+            <button className="tool" onClick={() => openScreen("pickcat-flash")}><span className="tool-icon">🃏</span>Flashcards</button>
+            <button className="tool" onClick={() => openScreen("pickcat-match")}><span className="tool-icon">🧩</span>Matching</button>
+            <button className="tool" onClick={() => openScreen("browse")}><span className="tool-icon">📚</span>Vocabulary list</button>
           </div>
         </section>
-
         <section>
-          <div className="section-head"><h2>🗣️ Real-life dialogues</h2></div>
+          <div className="section-head"><h2>📖 Stories</h2></div>
           <div className="chip-row">
-            {DIALOGUES.map((d) => (
-              <button key={d.id} className="chip" onClick={() => go("dialogue", { id: d.id })}>{d.icon} {d.title}</button>
+            {STORIES.map((s) => (
+              <button key={s.id} className="chip" onClick={() => openScreen("story", { id: s.id })}>{s.icon} {s.title}</button>
             ))}
           </div>
         </section>
-
         <section>
-          <div className="section-head"><h2>🎮 Free practice</h2></div>
-          <div className="tool-grid">
-            <button className="tool" onClick={() => go("pickcat", { mode: "flash" })}><span className="tool-icon">🃏</span>Flashcards</button>
-            <button className="tool" onClick={() => go("pickcat", { mode: "match" })}><span className="tool-icon">🧩</span>Matching</button>
-            <button className="tool" onClick={() => go("pickstory")}><span className="tool-icon">📖</span>Story mode</button>
-            <button className="tool" onClick={() => go("dictation")}><span className="tool-icon">🎧</span>Dictation</button>
-            <button className="tool" onClick={() => go("listen")}><span className="tool-icon">👂</span>Listen & choose</button>
-            <button className="tool" onClick={() => go("numlisten")}><span className="tool-icon">💶</span>Price listening</button>
-            <button className="tool" onClick={() => go("browse")}><span className="tool-icon">📚</span>Vocabulary</button>
+          <div className="section-head"><h2>🗣️ Real-life dialogues</h2></div>
+          <p className="level-blurb">Full conversations with audio — café, shop, office, pharmacy, restaurant and directions.</p>
+          <div className="chip-row">
+            {DIALOGUES.map((d) => (
+              <button key={d.id} className="chip" onClick={() => openScreen("dialogue", { id: d.id })}>{d.icon} {d.title}</button>
+            ))}
           </div>
         </section>
-        <footer className="foot">
-          Aprende! · European Portuguese (pt-PT) · audio = your device's speech voice · A1 & A2 coming in Phase 2
-          <div style={{ marginTop: 8 }}>
-            <button className="btn ghost small" onClick={resetProgress}>↺ Reset progress</button>
+      </>
+    );
+  }
+
+  if (tab === "listen") {
+    body = (
+      <>
+        <div className="tab-hero">
+          <h1>🎧 Listen</h1>
+          <p className="hero-sub-dark">Train your ear — the biggest advantage of living in Portugal. Every exercise speaks European Portuguese aloud.</p>
+        </div>
+        <section>
+          <div className="tool-grid">
+            <button className="tool tall" onClick={() => openScreen("dictation")}><span className="tool-icon">🎧</span>Dictation<span className="tool-sub">Hear it, type it</span></button>
+            <button className="tool tall" onClick={() => openScreen("listen")}><span className="tool-icon">👂</span>Listen & choose<span className="tool-sub">Hear a word, pick the meaning</span></button>
+            <button className="tool tall" onClick={() => openScreen("numlisten")}><span className="tool-icon">💶</span>Prices by ear<span className="tool-sub">Understand prices & numbers</span></button>
           </div>
-        </footer>
+        </section>
+        <div className="info-card">
+          <b>🔊 Audio tips for European Portuguese</b>
+          <p>Tap any 🔊 once to start (browsers need one tap first). Use 🐢 for slow playback — PT-PT swallows vowels, so slow practice helps a lot. On iPhone the voice “Joana” is built in; on Android install the Portuguese (Portugal) voice in Settings.</p>
+        </div>
+      </>
+    );
+  }
+
+  if (tab === "exam") {
+    if (screen.name === "exam-run") {
+      return (
+        <div className="app">
+          <GlobalStyle />
+          <AppHeader {...headerProps} />
+          <button className="btn ghost small back" onClick={() => { closeScreen(); }}>← Back</button>
+          <FinalExam onXP={addXP} allUnitsDone={allUnitsDone}
+            onBack={closeScreen}
+            onAward={(d) => { setCert(d); closeScreen(); }} />
+          <TabBar active={tab} onTab={switchTab} />
+        </div>
+      );
+    }
+    body = (
+      <>
+        <div className="tab-hero">
+          <h1>🎓 Final Exam</h1>
+          <p className="hero-sub-dark">Test everything you've learned and earn a printable certificate with your indicative level.</p>
+        </div>
+        {cert ? (
+          <div className="panel">
+            <span className="eyebrow">🏆 Your certificate</span>
+            <p className="lesson-body">You passed the final exam as <b>{cert.name}</b> — level <b>{cert.level}</b>, {cert.score}/{cert.total}.</p>
+            <div className="row gap">
+              <button className="btn primary wide" onClick={() => openScreen("cert-view")}>View / print certificate</button>
+              <button className="btn ghost" onClick={() => openScreen("exam-run")}>Retake exam</button>
+            </div>
+          </div>
+        ) : (
+          <div className="panel">
+            <span className="eyebrow">Ready when you are</span>
+            <p className="lesson-body">20 mixed questions from A0–A2. Score 60% to pass and unlock your certificate. {allUnitsDone ? "You've finished all units — perfect timing!" : "You can take it anytime, but finishing the units first will help."}</p>
+            <button className="btn primary wide" onClick={() => openScreen("exam-run")}>Start the final exam →</button>
+          </div>
+        )}
+        <button className="btn ghost small" style={{ marginTop: 16 }} onClick={resetProgress}>↺ Reset all progress</button>
+      </>
+    );
+  }
+
+  // certificate viewer (full screen, printable)
+  if (screen.name === "cert-view" && cert) {
+    return (
+      <div className="app">
+        <GlobalStyle />
+        <div className="no-print"><AppHeader {...headerProps} /></div>
+        <Certificate data={cert} onBack={closeScreen} />
       </div>
     );
   }
-
-  /* ---------- SUBSCREENS (use stable AppShell) ---------- */
-
-  if (screen.name === "unit") {
-    const unit = UNITS.find((u) => u.id === screen.id);
+  // category pickers for practice
+  if (screen.name === "pickcat-flash" || screen.name === "pickcat-match") {
+    const mode = screen.name === "pickcat-flash" ? "flash" : "match";
     return (
-      <AppShell headerProps={headerProps} onHome={() => go("home")}>
-        <UnitPlayer unit={unit} onXP={addXP} onBack={() => go("home")} alreadyDone={completed.includes(unit.id)}
-          onPass={() => { if (!completed.includes(unit.id)) { setCompleted((c) => [...c, unit.id]); addXP(40); } go("home"); }} />
-      </AppShell>
-    );
-  }
-  if (screen.name === "pickcat") {
-    return (
-      <AppShell headerProps={headerProps} onHome={() => go("home")}>
+      <div className="app">
+        <GlobalStyle />
+        <AppHeader {...headerProps} />
+        <button className="btn ghost small back" onClick={closeScreen}>← Back</button>
         <div className="panel">
-          <span className="eyebrow">{screen.mode === "flash" ? "🃏 Flashcards" : "🧩 Matching"} — pick a category</span>
+          <span className="eyebrow">{mode === "flash" ? "🃏 Flashcards" : "🧩 Matching"} — pick a category</span>
           <div className="chip-col">
             {Object.entries(VOCAB).map(([k, c]) => (
-              <button key={k} className="chip wide-chip" onClick={() => go(screen.mode === "flash" ? "flash" : "match", { cat: k })}>
+              <button key={k} className="chip wide-chip" onClick={() => openScreen(mode, { cat: k })}>
                 {c.icon} {c.label} <span className="tiny">({c.words.length} words)</span>
               </button>
             ))}
           </div>
         </div>
-      </AppShell>
+        <TabBar active={tab} onTab={switchTab} />
+      </div>
     );
   }
-  if (screen.name === "flash") return <AppShell headerProps={headerProps} onHome={() => go("home")}><Flashcards catKey={screen.cat} onXP={addXP} onBack={() => go("pickcat", { mode: "flash" })} /></AppShell>;
-  if (screen.name === "match") return <AppShell headerProps={headerProps} onHome={() => go("home")}><Matching catKey={screen.cat} onXP={addXP} onBack={() => go("pickcat", { mode: "match" })} /></AppShell>;
-  if (screen.name === "pickstory") {
-    return (
-      <AppShell headerProps={headerProps} onHome={() => go("home")}>
-        <div className="panel">
-          <span className="eyebrow">📖 Story mode — learn words in context</span>
-          <div className="chip-col">
-            {STORIES.map((s) => (
-              <button key={s.id} className="chip wide-chip" onClick={() => go("story", { id: s.id })}>{s.icon} {s.title}</button>
-            ))}
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
-  if (screen.name === "story") return <AppShell headerProps={headerProps} onHome={() => go("home")}><Story story={STORIES.find((s) => s.id === screen.id)} onXP={addXP} onBack={() => go("home")} /></AppShell>;
-  if (screen.name === "dialogue") return <AppShell headerProps={headerProps} onHome={() => go("home")}><Dialogue d={DIALOGUES.find((d) => d.id === screen.id)} onXP={addXP} onBack={() => go("home")} /></AppShell>;
-  if (screen.name === "dictation") return <AppShell headerProps={headerProps} onHome={() => go("home")}><Dictation onXP={addXP} onBack={() => go("home")} /></AppShell>;
-  if (screen.name === "listen") return <AppShell headerProps={headerProps} onHome={() => go("home")}><ListenChoose onXP={addXP} onBack={() => go("home")} /></AppShell>;
-  if (screen.name === "numlisten") return <AppShell headerProps={headerProps} onHome={() => go("home")}><NumberListening onXP={addXP} onBack={() => go("home")} /></AppShell>;
-  if (screen.name === "browse") {
-    return (
-      <AppShell headerProps={headerProps} onHome={() => go("home")}>
-        {Object.entries(VOCAB).map(([k, c]) => (
-          <div className="panel" key={k}>
-            <span className="eyebrow">{c.icon} {c.label}</span>
-            <div className="vocab-list">
-              {c.words.map((w, i) => (
-                <div className="vocab-row" key={i}>
-                  <span className={"vw" + (w.g ? " g-" + w.g : "")}>{w.pt}</span>
-                  <span className="ve">{w.en}</span>
-                  <Speak text={w.pt} />
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </AppShell>
-    );
-  }
-  return null;
+
+  return (
+    <div className="app has-tabs">
+      <GlobalStyle />
+      <AppHeader {...headerProps} />
+      {body}
+      <footer className="foot">Aprende! · European Portuguese (pt-PT) · audio uses your device's speech voice</footer>
+      <TabBar active={tab} onTab={switchTab} />
+    </div>
+  );
 }
 
 /* =================== STYLES =================== */
@@ -1453,6 +1705,40 @@ section{margin:20px 0}
 .ve{color:var(--muted);flex:1;font-size:13.5px}
 .foot{text-align:center;font-size:12px;color:var(--muted);margin-top:26px;padding-top:12px;border-top:1px solid var(--tilebd)}
 @media (max-width:420px){.match-grid{grid-template-columns:repeat(2,1fr)}.hero h1{font-size:25px}}
+
+/* tabs */
+.app.has-tabs{padding-bottom:84px}
+.tabbar{position:fixed;bottom:0;left:0;right:0;max-width:640px;margin:0 auto;display:flex;background:#fff;border-top:1px solid var(--tilebd);box-shadow:0 -3px 14px rgba(13,49,96,.08);z-index:50}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 4px 10px;background:none;border:none;cursor:pointer;color:var(--muted);font:inherit;font-size:11px;font-weight:600;border-top:3px solid transparent}
+.tab.active{color:var(--cobalt);border-top-color:var(--cobalt)}
+.tab-icon{font-size:20px}
+.tab-hero{background:var(--cobalt);color:#fff;border-radius:14px;padding:20px 18px;margin:16px 0}
+.tab-hero h1{font-size:26px;font-weight:800}
+.hero-sub-dark{opacity:.85;font-size:14px;margin-top:4px}
+.level-blurb{font-size:13.5px;color:var(--muted);margin:-4px 0 10px}
+.tool.tall{min-height:96px;justify-content:flex-start}
+.tool-sub{font-size:11px;color:var(--muted);font-weight:500;margin-top:2px}
+.info-card{background:var(--sky);border:1px solid var(--tilebd);border-radius:11px;padding:14px;margin:14px 0;font-size:13.5px;line-height:1.5}
+.info-card p{margin-top:6px;color:var(--muted)}
+.warn-soft{background:#FFF8E8;border:1px solid #EAD194;border-radius:9px;padding:10px;font-size:13.5px;margin:10px 0}
+.field-label{display:block;font-size:13px;font-weight:600;color:var(--deep);margin:10px 0 4px}
+
+/* certificate */
+.cert{padding:6px 0}
+.cert-border{border:3px double var(--cobalt);border-radius:10px;padding:26px 22px;text-align:center;background:linear-gradient(#fff,#FBFCFE)}
+.cert-flag{font-size:34px}
+.cert-eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--tram-dk);font-weight:700;margin-top:6px}
+.cert-title{font-family:'Fraunces',serif;font-size:27px;color:var(--deep);margin:8px 0}
+.cert-sub{font-size:13.5px;color:var(--muted);margin:8px 0}
+.cert-name{font-family:'Fraunces',serif;font-size:30px;font-weight:800;color:var(--cobalt);border-bottom:2px solid var(--tilebd);display:inline-block;padding:0 18px 6px;margin:4px 0 10px}
+.cert-level{display:inline-block;background:var(--cobalt);color:#fff;font-family:'Fraunces',serif;font-size:30px;font-weight:800;border-radius:10px;padding:6px 22px;margin:6px 0}
+.cert-score{font-size:14px;color:var(--ink);margin-top:8px;font-weight:600}
+.cert-foot{display:flex;justify-content:space-around;margin-top:22px}
+.cert-line{font-weight:600;border-top:1px solid var(--ink);padding-top:4px;min-width:120px}
+.cert-sig{font-family:'Fraunces',serif;color:var(--cobalt)}
+.cert-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.cert-note{font-size:10.5px;color:var(--muted);margin-top:18px;font-style:italic}
+@media print{.no-print{display:none!important}.app{padding:0}.cert-border{border-color:#000}}
 `}</style>
   );
 }
