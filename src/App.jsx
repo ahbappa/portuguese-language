@@ -1095,6 +1095,32 @@ function UnitPlayer({ unit, onPass, onXP, onBack, alreadyDone }) {
   );
 }
 
+/* =================== STABLE LAYOUT (module-level so quiz state survives re-renders) =================== */
+function AppHeader({ xp, level, go }) {
+  return (
+    <header className="topbar">
+      <div className="brand" onClick={() => go("home")}>
+        <span className="brand-tile">A!</span>
+        <span className="brand-name">Aprende<span className="accent">!</span></span>
+      </div>
+      <div className="stats">
+        <span className="stat">⭐ {xp} XP</span>
+        <span className="stat lvl">Lv {level}</span>
+      </div>
+    </header>
+  );
+}
+function AppShell({ headerProps, onHome, children }) {
+  return (
+    <div className="app">
+      <GlobalStyle />
+      <AppHeader {...headerProps} />
+      <button className="btn ghost small back" onClick={onHome}>← Home</button>
+      {children}
+    </div>
+  );
+}
+
 /* =================== MAIN APP =================== */
 export default function App() {
   const [screen, setScreen] = useState({ name: "home" });
@@ -1129,25 +1155,14 @@ export default function App() {
   const unlockedCount = completed.length + 1;
   const a0done = completed.length >= UNITS.length;
 
-  const Header = (
-    <header className="topbar">
-      <div className="brand" onClick={() => go("home")}>
-        <span className="brand-tile">A!</span>
-        <span className="brand-name">Aprende<span className="accent">!</span></span>
-      </div>
-      <div className="stats">
-        <span className="stat">⭐ {xp} XP</span>
-        <span className="stat lvl">Lv {level}</span>
-      </div>
-    </header>
-  );
+  const headerProps = { xp, level, go };
 
   /* ---------- HOME ---------- */
   if (screen.name === "home") {
     return (
       <div className="app">
         <GlobalStyle />
-        {Header}
+        <AppHeader {...headerProps} />
         <div className="hero">
           <div className="hero-tiles" aria-hidden="true">◆ ◇ ◆ ◇ ◆ ◇ ◆ ◇ ◆</div>
           <h1>Português Europeu</h1>
@@ -1225,28 +1240,20 @@ export default function App() {
     );
   }
 
-  /* ---------- SUBSCREEN SHELL ---------- */
-  const Shell = ({ children }) => (
-    <div className="app">
-      <GlobalStyle />
-      {Header}
-      <button className="btn ghost small back" onClick={() => go("home")}>← Home</button>
-      {children}
-    </div>
-  );
+  /* ---------- SUBSCREENS (use stable AppShell) ---------- */
 
   if (screen.name === "unit") {
     const unit = UNITS.find((u) => u.id === screen.id);
     return (
-      <Shell>
+      <AppShell headerProps={headerProps} onHome={() => go("home")}>
         <UnitPlayer unit={unit} onXP={addXP} onBack={() => go("home")} alreadyDone={completed.includes(unit.id)}
           onPass={() => { if (!completed.includes(unit.id)) { setCompleted((c) => [...c, unit.id]); addXP(40); } go("home"); }} />
-      </Shell>
+      </AppShell>
     );
   }
   if (screen.name === "pickcat") {
     return (
-      <Shell>
+      <AppShell headerProps={headerProps} onHome={() => go("home")}>
         <div className="panel">
           <span className="eyebrow">{screen.mode === "flash" ? "🃏 Flashcards" : "🧩 Matching"} — pick a category</span>
           <div className="chip-col">
@@ -1257,14 +1264,14 @@ export default function App() {
             ))}
           </div>
         </div>
-      </Shell>
+      </AppShell>
     );
   }
-  if (screen.name === "flash") return <Shell><Flashcards catKey={screen.cat} onXP={addXP} onBack={() => go("pickcat", { mode: "flash" })} /></Shell>;
-  if (screen.name === "match") return <Shell><Matching catKey={screen.cat} onXP={addXP} onBack={() => go("pickcat", { mode: "match" })} /></Shell>;
+  if (screen.name === "flash") return <AppShell headerProps={headerProps} onHome={() => go("home")}><Flashcards catKey={screen.cat} onXP={addXP} onBack={() => go("pickcat", { mode: "flash" })} /></AppShell>;
+  if (screen.name === "match") return <AppShell headerProps={headerProps} onHome={() => go("home")}><Matching catKey={screen.cat} onXP={addXP} onBack={() => go("pickcat", { mode: "match" })} /></AppShell>;
   if (screen.name === "pickstory") {
     return (
-      <Shell>
+      <AppShell headerProps={headerProps} onHome={() => go("home")}>
         <div className="panel">
           <span className="eyebrow">📖 Story mode — learn words in context</span>
           <div className="chip-col">
@@ -1273,17 +1280,17 @@ export default function App() {
             ))}
           </div>
         </div>
-      </Shell>
+      </AppShell>
     );
   }
-  if (screen.name === "story") return <Shell><Story story={STORIES.find((s) => s.id === screen.id)} onXP={addXP} onBack={() => go("home")} /></Shell>;
-  if (screen.name === "dialogue") return <Shell><Dialogue d={DIALOGUES.find((d) => d.id === screen.id)} onXP={addXP} onBack={() => go("home")} /></Shell>;
-  if (screen.name === "dictation") return <Shell><Dictation onXP={addXP} onBack={() => go("home")} /></Shell>;
-  if (screen.name === "listen") return <Shell><ListenChoose onXP={addXP} onBack={() => go("home")} /></Shell>;
-  if (screen.name === "numlisten") return <Shell><NumberListening onXP={addXP} onBack={() => go("home")} /></Shell>;
+  if (screen.name === "story") return <AppShell headerProps={headerProps} onHome={() => go("home")}><Story story={STORIES.find((s) => s.id === screen.id)} onXP={addXP} onBack={() => go("home")} /></AppShell>;
+  if (screen.name === "dialogue") return <AppShell headerProps={headerProps} onHome={() => go("home")}><Dialogue d={DIALOGUES.find((d) => d.id === screen.id)} onXP={addXP} onBack={() => go("home")} /></AppShell>;
+  if (screen.name === "dictation") return <AppShell headerProps={headerProps} onHome={() => go("home")}><Dictation onXP={addXP} onBack={() => go("home")} /></AppShell>;
+  if (screen.name === "listen") return <AppShell headerProps={headerProps} onHome={() => go("home")}><ListenChoose onXP={addXP} onBack={() => go("home")} /></AppShell>;
+  if (screen.name === "numlisten") return <AppShell headerProps={headerProps} onHome={() => go("home")}><NumberListening onXP={addXP} onBack={() => go("home")} /></AppShell>;
   if (screen.name === "browse") {
     return (
-      <Shell>
+      <AppShell headerProps={headerProps} onHome={() => go("home")}>
         {Object.entries(VOCAB).map(([k, c]) => (
           <div className="panel" key={k}>
             <span className="eyebrow">{c.icon} {c.label}</span>
@@ -1298,7 +1305,7 @@ export default function App() {
             </div>
           </div>
         ))}
-      </Shell>
+      </AppShell>
     );
   }
   return null;
