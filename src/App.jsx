@@ -666,8 +666,10 @@ function Quiz({ questions, onDone, onXP, titleLabel }) {
   const [state, setState] = useState("ask"); // ask | right | wrong
   const [score, setScore] = useState(0);
   const [plays, setPlays] = useState(0);
+  const scoreRef = useRef(0); // authoritative tally — not subject to async state lag
   const q = questions[i];
   const total = questions.length;
+  const isLast = i + 1 >= total;
 
   useEffect(() => { setPicked(null); setTyped(""); setState("ask"); setPlays(0); }, [i]);
   useEffect(() => {
@@ -679,26 +681,31 @@ function Quiz({ questions, onDone, onXP, titleLabel }) {
 
   if (!q) return null;
 
+  const markRight = (xp) => {
+    scoreRef.current += 1;
+    setScore(scoreRef.current);
+    onXP(xp);
+    setState("right");
+  };
   const checkType = () => {
     const ok = Array.isArray(q.a) ? q.a.map(norm).includes(norm(typed)) : norm(typed) === norm(q.a);
-    if (ok) { setScore((s) => s + 1); onXP(plays === 0 ? 12 : 8); setState("right"); }
+    if (ok) markRight(plays === 0 ? 12 : 8);
     else setState("wrong");
   };
   const checkMC = (idx) => {
     setPicked(idx);
-    if (idx === q.a) { setScore((s) => s + 1); onXP(10); setState("right"); }
+    if (idx === q.a) markRight(10);
     else setState("wrong");
   };
-  const next = () => {
-    if (i + 1 >= total) onDone(state === "right" || picked === q.a || norm(typed) === norm(Array.isArray(q.a) ? q.a[0] : q.a) ? score : score);
+  const advance = () => {
+    if (isLast) onDone(scoreRef.current); // always the true, final score
     else setI(i + 1);
   };
-  const finished = i + 1 >= total && state !== "ask";
 
   return (
     <div className="quiz">
       <div className="quiz-head">
-        <span className="eyebrow">{titleLabel || "Checkpoint"} · {i + 1}/{total}</span>
+        <span className="eyebrow">{titleLabel || "Checkpoint"} · question {i + 1} of {total}</span>
         <Bar value={i + (state !== "ask" ? 1 : 0)} max={total} />
       </div>
       <h3 className="quiz-q">{q.q}</h3>
@@ -737,8 +744,8 @@ function Quiz({ questions, onDone, onXP, titleLabel }) {
         </div>
       )}
       {state !== "ask" && (
-        <button className="btn primary wide" onClick={() => { if (finished) onDone(score); else next(); }}>
-          {finished ? "See results →" : "Next →"}
+        <button className="btn primary wide" onClick={advance}>
+          {isLast ? "See results →" : "Next question →"}
         </button>
       )}
     </div>
@@ -1001,57 +1008,89 @@ function ListenChoose({ onXP, onBack }) {
 }
 
 /* =================== UNIT LESSON PLAYER =================== */
-function UnitPlayer({ unit, onPass, onXP, onBack }) {
-  const [step, setStep] = useState(0); // cards... then quiz
-  const totalSteps = unit.cards.length + 1;
-  const inQuiz = step >= unit.cards.length;
-  const card = unit.cards[step];
+function UnitPlayer({ unit, onPass, onXP, onBack, alreadyDone }) {
+  const PASS = Math.ceil(unit.quiz.length * 0.66); // 4 of 6
+  const [step, setStep] = useState("intro"); // "intro" | 0..n-1 (cards) | "quiz" | "result"
   const [result, setResult] = useState(null);
 
-  if (result !== null) {
-    const passed = result >= Math.ceil(unit.quiz.length * 0.66);
+  // INTRO — explains what this unit is and how passing works
+  if (step === "intro") {
     return (
-      <div className="panel center">
-        <div className="big-emoji">{passed ? "🏅" : "💪"}</div>
-        <h2>{passed ? "Unit passed!" : "Almost there"}</h2>
-        <p>You scored <b>{result}/{unit.quiz.length}</b>. {passed ? "Next unit unlocked." : "You need " + Math.ceil(unit.quiz.length * 0.66) + " to pass — review the cards and try again."}</p>
-        {passed
-          ? <button className="btn primary wide" onClick={() => onPass()}>Continue →</button>
-          : <div className="row gap">
-              <button className="btn ghost wide" onClick={() => { setStep(0); setResult(null); }}>Review cards</button>
-              <button className="btn primary wide" onClick={() => { setStep(unit.cards.length); setResult(null); }}>Retry quiz</button>
-            </div>}
+      <div className="panel">
+        <span className="eyebrow">{unit.icon} Unit · {unit.title}</span>
+        <p className="lesson-body" style={{ marginTop: 8 }}>{unit.desc}</p>
+        <div className="how-box">
+          <div className="how-row"><span className="how-num">1</span><div><b>Learn</b> — {unit.cards.length} short lesson cards. Tap 🔊 to hear each word, 🐢 to hear it slowly. Read them all, no rush.</div></div>
+          <div className="how-row"><span className="how-num">2</span><div><b>Checkpoint quiz</b> — {unit.quiz.length} questions that test what you just learned. This is the “exam” at the end of the unit.</div></div>
+          <div className="how-row"><span className="how-num">3</span><div><b>Pass</b> — get <b>{PASS} out of {unit.quiz.length}</b> right to clear the unit and unlock the next one. Don’t worry if you miss — you can retry as many times as you like.</div></div>
+        </div>
+        <button className="btn primary wide" onClick={() => setStep(0)}>Start learning →</button>
+        {alreadyDone && <p className="tiny center-text" style={{ color: "var(--muted)", marginTop: 8 }}>✓ You’ve already passed this unit — feel free to review or re-test.</p>}
       </div>
     );
   }
+
+  // RESULT
+  if (step === "result") {
+    const passed = result >= PASS;
+    return (
+      <div className="panel center">
+        <div className="big-emoji">{passed ? "🏅" : "💪"}</div>
+        <h2>{passed ? "Unit passed!" : "So close!"}</h2>
+        <p>You scored <b>{result} / {unit.quiz.length}</b>{passed ? "." : `, but you need ${PASS} to pass.`}</p>
+        <p className="muted">{passed
+          ? "Great work — the next unit is now unlocked."
+          : "Review the lesson cards, then take the checkpoint again. Every retry helps it stick."}</p>
+        {passed ? (
+          <button className="btn primary wide" onClick={() => onPass()}>Continue to next unit →</button>
+        ) : (
+          <div className="row gap" style={{ marginTop: 10 }}>
+            <button className="btn ghost wide" onClick={() => { setResult(null); setStep(0); }}>↺ Review cards</button>
+            <button className="btn primary wide" onClick={() => { setResult(null); setStep("quiz"); }}>Retry quiz →</button>
+          </div>
+        )}
+        <button className="btn ghost small" style={{ marginTop: 14 }} onClick={onBack}>← Back to all units</button>
+      </div>
+    );
+  }
+
+  // QUIZ
+  if (step === "quiz") {
+    return (
+      <div className="panel">
+        <div className="quiz-head">
+          <span className="eyebrow">{unit.icon} {unit.title} · Checkpoint quiz</span>
+        </div>
+        <Quiz questions={unit.quiz} titleLabel="Checkpoint" onXP={onXP} onDone={(score) => { setResult(score); setStep("result"); }} />
+      </div>
+    );
+  }
+
+  // LESSON CARDS (step is a number)
+  const card = unit.cards[step];
+  const lastCard = step + 1 === unit.cards.length;
   return (
     <div className="panel">
       <div className="quiz-head">
-        <span className="eyebrow">{unit.icon} {unit.title} · {inQuiz ? "Checkpoint quiz" : `Lesson ${step + 1}/${unit.cards.length}`}</span>
-        <Bar value={step} max={totalSteps} />
+        <span className="eyebrow">{unit.icon} {unit.title} · Lesson {step + 1} of {unit.cards.length}</span>
+        <Bar value={step + 1} max={unit.cards.length + 1} />
       </div>
-      {!inQuiz ? (
-        <>
-          <h3 className="lesson-title">{card.title}</h3>
-          <p className="lesson-body">{card.body}</p>
-          <div className="lesson-items">
-            {card.items.map((it, i) => (
-              <div className="lesson-item" key={i}>
-                <div className="li-pt">{it.pt} <Speak text={it.pt} /></div>
-                <div className="li-en">{it.en}</div>
-              </div>
-            ))}
+      <h3 className="lesson-title">{card.title}</h3>
+      <p className="lesson-body">{card.body}</p>
+      <div className="lesson-items">
+        {card.items.map((it, i) => (
+          <div className="lesson-item" key={i}>
+            <div className="li-pt">{it.pt} <Speak text={it.pt} /></div>
+            <div className="li-en">{it.en}</div>
           </div>
-          <div className="row gap">
-            {step > 0 && <button className="btn ghost" onClick={() => setStep(step - 1)}>← Back</button>}
-            <button className="btn primary wide" onClick={() => setStep(step + 1)}>
-              {step + 1 === unit.cards.length ? "Start checkpoint quiz →" : "Next →"}
-            </button>
-          </div>
-        </>
-      ) : (
-        <Quiz questions={unit.quiz} titleLabel="Checkpoint" onXP={onXP} onDone={(score) => setResult(score)} />
-      )}
+        ))}
+      </div>
+      <div className="row gap">
+        <button className="btn ghost" onClick={() => setStep(step === 0 ? "intro" : step - 1)}>← Back</button>
+        <button className="btn primary wide" onClick={() => setStep(lastCard ? "quiz" : step + 1)}>
+          {lastCard ? "I’m ready — start the checkpoint quiz →" : "Next lesson →"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1117,6 +1156,16 @@ export default function App() {
           <div className="tiny center-text">{xp} / {lvlMax} XP to next level · progress is saved on this device</div>
           {!voiceOk && <div className="warn">⚠️ Your browser has no speech engine — audio buttons won't play. Try Chrome or Edge.</div>}
         </div>
+
+        <details className="how-details">
+          <summary>📘 New here? How the app works (tap to read)</summary>
+          <div className="how-box">
+            <div className="how-row"><span className="how-num">📦</span><div>A <b>unit</b> is one bite-sized topic (like “Survival Phrases”). The course is 6 units that build on each other.</div></div>
+            <div className="how-row"><span className="how-num">📖</span><div>Each unit starts with a few <b>lesson cards</b> — short pages that teach words and rules. Tap 🔊 to hear them, 🐢 for slow audio.</div></div>
+            <div className="how-row"><span className="how-num">🎯</span><div>At the end is a <b>checkpoint</b> — a short quiz. Score <b>4 out of 6</b> to pass the unit and unlock the next one. Retry as often as you like.</div></div>
+            <div className="how-row"><span className="how-num">🔒</span><div>Locked units open automatically once you pass the one before. <b>Free practice</b> below (flashcards, games, listening) is open anytime — no unlocking needed.</div></div>
+          </div>
+        </details>
 
         <section>
           <div className="section-head"><h2>🇵🇹 Level A0 — Survival</h2><span className="tiny">{completed.length}/{UNITS.length} units · pass each quiz with 4/6 to unlock the next</span></div>
@@ -1190,7 +1239,7 @@ export default function App() {
     const unit = UNITS.find((u) => u.id === screen.id);
     return (
       <Shell>
-        <UnitPlayer unit={unit} onXP={addXP} onBack={() => go("home")}
+        <UnitPlayer unit={unit} onXP={addXP} onBack={() => go("home")} alreadyDone={completed.includes(unit.id)}
           onPass={() => { if (!completed.includes(unit.id)) { setCompleted((c) => [...c, unit.id]); addXP(40); } go("home"); }} />
       </Shell>
     );
@@ -1292,6 +1341,13 @@ section{margin:20px 0}
 .tiny{font-size:12px;color:var(--muted)}
 .center-text{text-align:center;color:rgba(255,255,255,.75)}
 .unit-list{display:flex;flex-direction:column;gap:9px}
+.how-details{background:#fff;border:1px solid var(--tilebd);border-radius:10px;padding:4px 14px;margin:6px 0 4px}
+.how-details summary{cursor:pointer;font-weight:600;padding:8px 0;color:var(--deep);list-style:none}
+.how-details summary::-webkit-details-marker{display:none}
+.how-details[open] summary{border-bottom:1px solid var(--tilebd);margin-bottom:8px}
+.how-box{display:flex;flex-direction:column;gap:10px;margin:6px 0 12px}
+.how-row{display:flex;gap:11px;align-items:flex-start;font-size:14px;line-height:1.45}
+.how-num{flex:none;display:grid;place-items:center;min-width:26px;height:26px;background:var(--sky);border:1px solid var(--tilebd);border-radius:7px;font-weight:700;font-size:14px;color:var(--cobalt)}
 .unit-card{display:flex;gap:12px;align-items:center;text-align:left;background:#fff;border:1px solid var(--tilebd);border-left:6px solid var(--cobalt);border-radius:10px;padding:13px;cursor:pointer;font:inherit;transition:transform .12s, box-shadow .12s}
 .unit-card:hover:not(:disabled){transform:translateX(3px);box-shadow:0 3px 10px rgba(13,49,96,.12)}
 .unit-card.done{border-left-color:var(--ok);background:var(--ok-bg)}
