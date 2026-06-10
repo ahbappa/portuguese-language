@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { A1_UNITS } from "./data/a1.js";
 import { A2_UNITS } from "./data/a2.js";
 import { EXAM_BANK, EXTRA_DIALOGUES, EXTRA_STORIES } from "./data/exam.js";
+import { VOCAB_EXTRA, SENTENCES, CLOZE, CONJ_VERBS, PRONOUN_LABELS } from "./data/vocab.js";
 
 /* ============================================================
    APRENDE! — European Portuguese · A0 → A1 → A2 + Final Exam
@@ -198,6 +199,8 @@ const VOCAB = {
     ],
   },
 };
+/* Merge in the large expanded vocabulary (~30 categories total) */
+Object.assign(VOCAB, VOCAB_EXTRA);
 
 /* =================== A0 UNITS (curriculum) =================== */
 const UNITS = [
@@ -1022,6 +1025,276 @@ function ListenChoose({ onXP, onBack }) {
   );
 }
 
+/* =================== SENTENCE BUILDER =================== */
+function SentenceBuilder({ onXP, onBack }) {
+  const [lvl, setLvl] = useState(1);
+  const pool = useMemo(() => SENTENCES.filter((s) => s.lvl === lvl), [lvl]);
+  const [idx, setIdx] = useState(0);
+  const [built, setBuilt] = useState([]);
+  const [bank, setBank] = useState([]);
+  const [state, setState] = useState("build"); // build | right | wrong
+  const [score, setScore] = useState(0);
+  const item = pool[idx];
+
+  useEffect(() => {
+    if (item) { setBank([...item.pt].sort(() => Math.random() - 0.5)); setBuilt([]); setState("build"); }
+  }, [idx, lvl]);
+
+  if (!item) return null;
+  const pick = (w, i) => { setBuilt([...built, w]); setBank(bank.filter((_, bi) => bi !== i)); };
+  const unpick = (i) => { const w = built[i]; setBuilt(built.filter((_, bi) => bi !== i)); setBank([...bank, w]); };
+  const check = () => {
+    const ok = built.join(" ") === item.pt.join(" ");
+    if (ok) { setScore(score + 1); onXP(12); setState("right"); speak(item.pt.join(" "), 0.9); }
+    else setState("wrong");
+  };
+  const next = () => {
+    if (idx + 1 >= pool.length) { onXP(score * 2); onBack(); }
+    else setIdx(idx + 1);
+  };
+
+  return (
+    <div className="panel">
+      <div className="row between">
+        <span className="eyebrow">🧩 Sentence Builder</span>
+        <div className="row gap">
+          {[1, 2, 3].map((l) => (
+            <button key={l} className={"btn small " + (lvl === l ? "primary" : "ghost")}
+              onClick={() => { setLvl(l); setIdx(0); }}>{l === 1 ? "Easy" : l === 2 ? "Medium" : "Hard"}</button>
+          ))}
+        </div>
+      </div>
+      <div className="quiz-head"><Bar value={idx + (state !== "build" ? 1 : 0)} max={pool.length} /></div>
+      <p className="sb-prompt">Translate &amp; arrange:</p>
+      <p className="sb-en">"{item.en}"</p>
+
+      <div className="sb-answer">
+        {built.length === 0 && <span className="sb-placeholder">tap words below in the right order…</span>}
+        {built.map((w, i) => (
+          <button key={i} className="sb-tile placed" disabled={state !== "build"} onClick={() => unpick(i)}>{w}</button>
+        ))}
+      </div>
+      <div className="sb-bank">
+        {bank.map((w, i) => (
+          <button key={i} className="sb-tile" disabled={state !== "build"} onClick={() => pick(w, i)}>{w}</button>
+        ))}
+      </div>
+
+      {state === "right" && <div className="feedback ok">✅ Perfeito! <Speak text={item.pt.join(" ")} /></div>}
+      {state === "wrong" && (
+        <div className="feedback bad">❌ Not quite. Correct: <b>{item.pt.join(" ")}</b> <Speak text={item.pt.join(" ")} /></div>
+      )}
+      <div className="row gap" style={{ marginTop: 10 }}>
+        {state === "build"
+          ? <button className="btn primary wide" disabled={bank.length > 0} onClick={check}>Check answer</button>
+          : <button className="btn primary wide" onClick={next}>{idx + 1 >= pool.length ? "Finish →" : "Next sentence →"}</button>}
+      </div>
+    </div>
+  );
+}
+
+/* =================== CONJUGATION TRAINER =================== */
+function ConjugationTrainer({ onXP, onBack }) {
+  const [tense, setTense] = useState("present");
+  const verbs = CONJ_VERBS[tense];
+  const [vIdx, setVIdx] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [checked, setChecked] = useState(false);
+  const verb = verbs[vIdx];
+  const persons = ["eu", "tu", "ele", "nos", "eles"];
+
+  useEffect(() => { setAnswers({}); setChecked(false); }, [vIdx, tense]);
+
+  const allCorrect = persons.every((p) => norm(answers[p] || "") === norm(verb.forms[p]));
+  const check = () => {
+    setChecked(true);
+    const correct = persons.filter((p) => norm(answers[p] || "") === norm(verb.forms[p])).length;
+    onXP(correct * 3);
+  };
+  const next = () => { if (vIdx + 1 >= verbs.length) onBack(); else setVIdx(vIdx + 1); };
+
+  return (
+    <div className="panel">
+      <div className="row between">
+        <span className="eyebrow">⚙️ Conjugation Trainer</span>
+      </div>
+      <div className="row gap" style={{ margin: "8px 0" }}>
+        {["present", "past", "imperfect"].map((t) => (
+          <button key={t} className={"btn small " + (tense === t ? "primary" : "ghost")}
+            onClick={() => { setTense(t); setVIdx(0); }}>
+            {t === "present" ? "Present" : t === "past" ? "Past" : "Imperfect"}
+          </button>
+        ))}
+      </div>
+      <h3 className="lesson-title">{verb.inf}</h3>
+      <p className="lesson-body">{verb.type} — fill in every person, then check. Tap 🔊 to hear the full set.</p>
+      <div className="conj-grid">
+        {persons.map((p) => {
+          const ok = checked && norm(answers[p] || "") === norm(verb.forms[p]);
+          const bad = checked && !ok;
+          return (
+            <div className="conj-row" key={p}>
+              <span className="conj-pron">{PRONOUN_LABELS[p]}</span>
+              <input className={"answer conj-input" + (ok ? " good" : "") + (bad ? " wrongbox" : "")}
+                value={answers[p] || ""} disabled={checked}
+                onChange={(e) => setAnswers({ ...answers, [p]: e.target.value })}
+                placeholder="…" />
+              {checked && bad && <span className="conj-correct">{verb.forms[p]}</span>}
+              {checked && <Speak text={verb.forms[p]} slow={false} />}
+            </div>
+          );
+        })}
+      </div>
+      {!checked
+        ? <button className="btn primary wide" onClick={check}>Check all</button>
+        : (
+          <>
+            <div className={"feedback " + (allCorrect ? "ok" : "bad")}>
+              {allCorrect ? "✅ All correct! Muito bem!" : "Some to review — correct forms shown in red."}
+              <Speak text={persons.map((p) => verb.forms[p]).join(", ")} />
+            </div>
+            <button className="btn primary wide" onClick={next}>{vIdx + 1 >= verbs.length ? "Finish →" : "Next verb →"}</button>
+          </>
+        )}
+    </div>
+  );
+}
+
+/* =================== FILL IN THE BLANK =================== */
+function FillBlank({ onXP, onBack }) {
+  const qs = useMemo(() => [...CLOZE].sort(() => Math.random() - 0.5).slice(0, 8), []);
+  const [idx, setIdx] = useState(0);
+  const [typed, setTyped] = useState("");
+  const [state, setState] = useState("ask");
+  const [score, setScore] = useState(0);
+  const item = qs[idx];
+
+  useEffect(() => { setTyped(""); setState("ask"); }, [idx]);
+  if (!item) return null;
+  const check = () => {
+    if (norm(typed) === norm(item.answer)) { setScore(score + 1); onXP(10); setState("right"); speak(item.say, 0.9); }
+    else setState("wrong");
+  };
+  const next = () => { if (idx + 1 >= qs.length) { onXP(score); onBack(); } else setIdx(idx + 1); };
+  const parts = item.sentence.split("___");
+
+  return (
+    <div className="panel">
+      <span className="eyebrow">✏️ Fill in the blank · {idx + 1}/{qs.length}</span>
+      <Bar value={idx + (state !== "ask" ? 1 : 0)} max={qs.length} />
+      <p className="cloze-sentence">{parts[0]}<span className="cloze-gap">{state === "ask" ? "_____" : item.answer}</span>{parts[1]}</p>
+      <p className="tiny" style={{ color: "var(--muted)" }}>Hint: {item.hint}</p>
+      <div className="type-row">
+        <input className="answer" value={typed} disabled={state !== "ask"} placeholder="Type the missing word…"
+          onChange={(e) => setTyped(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && state === "ask" && typed && check()} />
+        {state === "ask" && <button className="btn primary" disabled={!typed} onClick={check}>Check</button>}
+      </div>
+      {state === "right" && <div className="feedback ok">✅ Certo! <b>{item.say}</b> <Speak text={item.say} /></div>}
+      {state === "wrong" && <div className="feedback bad">❌ Correct answer: <b>{item.answer}</b> — {item.say} <Speak text={item.say} /></div>}
+      {state !== "ask" && <button className="btn primary wide" onClick={next}>{idx + 1 >= qs.length ? "Finish →" : "Next →"}</button>}
+    </div>
+  );
+}
+
+/* =================== SPEED ROUND (timed) =================== */
+function SpeedRound({ onXP, onBack }) {
+  const allWords = useMemo(() => Object.values(VOCAB).flatMap((c) => c.words).filter((w) => w.en && w.pt), []);
+  const [time, setTime] = useState(60);
+  const [running, setRunning] = useState(false);
+  const [score, setScore] = useState(0);
+  const [q, setQ] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+
+  const newQ = () => {
+    const w = allWords[Math.floor(Math.random() * allWords.length)];
+    const wrong = [...allWords].filter((x) => x.en !== w.en).sort(() => Math.random() - 0.5).slice(0, 3).map((x) => x.en);
+    const opts = [...wrong, w.en].sort(() => Math.random() - 0.5);
+    setQ({ pt: w.pt, opts, a: w.en });
+  };
+  const start = () => { setScore(0); setTime(60); setRunning(true); newQ(); };
+  useEffect(() => {
+    if (!running) return;
+    if (time <= 0) { setRunning(false); onXP(score * 2); return; }
+    const t = setTimeout(() => setTime(time - 1), 1000);
+    return () => clearTimeout(t);
+  }, [running, time]);
+
+  const answer = (opt) => {
+    if (opt === q.a) { setScore((s) => s + 1); setFeedback("ok"); }
+    else { setFeedback("bad"); }
+    setTimeout(() => { setFeedback(null); newQ(); }, 250);
+  };
+
+  if (!running) {
+    return (
+      <div className="panel center">
+        <div className="big-emoji">⚡</div>
+        <h2>Speed Round</h2>
+        <p className="muted">{time === 60 ? "60 seconds. How many words can you match? +2 XP each." : `Time! You scored ${score} — that's ${score * 2} XP.`}</p>
+        <button className="btn primary wide" onClick={start}>{time === 60 ? "Start!" : "Play again"}</button>
+        <button className="btn ghost small" style={{ marginTop: 12 }} onClick={onBack}>← Back</button>
+      </div>
+    );
+  }
+  return (
+    <div className="panel">
+      <div className="row between">
+        <span className="stat lvl">⏱️ {time}s</span>
+        <span className="stat">⭐ {score}</span>
+      </div>
+      <div className={"speed-word" + (feedback ? " " + feedback : "")} onClick={() => speak(q.pt, 0.95)}>
+        {q.pt} <Speak text={q.pt} slow={false} />
+      </div>
+      <div className="opts">
+        {q.opts.map((o, i) => (
+          <button key={i} className="opt" onClick={() => answer(o)}>{o}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* =================== GENDER SORT =================== */
+function GenderSort({ onXP, onBack }) {
+  const gendered = useMemo(
+    () => Object.values(VOCAB).flatMap((c) => c.words).filter((w) => w.g === "m" || w.g === "f"),
+    []
+  );
+  const round = useMemo(() => [...gendered].sort(() => Math.random() - 0.5).slice(0, 10), []);
+  const [idx, setIdx] = useState(0);
+  const [score, setScore] = useState(0);
+  const [feedback, setFeedback] = useState(null);
+  const w = round[idx];
+
+  if (!w) return null;
+  const choose = (g) => {
+    const correct = g === w.g;
+    if (correct) { setScore(score + 1); onXP(5); setFeedback("ok"); }
+    else setFeedback("bad");
+    setTimeout(() => {
+      setFeedback(null);
+      if (idx + 1 >= round.length) onBack();
+      else setIdx(idx + 1);
+    }, 600);
+  };
+  return (
+    <div className="panel">
+      <span className="eyebrow">⚖️ Gender Sort · {idx + 1}/{round.length}</span>
+      <Bar value={idx} max={round.length} />
+      <p className="tiny" style={{ color: "var(--muted)", marginTop: 8 }}>Is this word masculine or feminine? (the article o/a is hidden)</p>
+      <div className={"gender-word" + (feedback ? " " + feedback : "")}>
+        {w.pt.replace(/^(o |a |os |as |um |uma )/i, "")} <Speak text={w.pt} slow={false} />
+      </div>
+      <div className="row gap">
+        <button className="btn wide" style={{ background: "var(--masc)", color: "#fff" }} onClick={() => choose("m")}>♂ Masculine (o)</button>
+        <button className="btn wide" style={{ background: "var(--fem)", color: "#fff" }} onClick={() => choose("f")}>♀ Feminine (a)</button>
+      </div>
+      <p className="tiny center-text" style={{ marginTop: 10 }}>Score: {score}</p>
+    </div>
+  );
+}
+
 /* =================== UNIT LESSON PLAYER =================== */
 function UnitPlayer({ unit, onPass, onXP, onBack, alreadyDone }) {
   const PASS = Math.ceil(unit.quiz.length * 0.66); // 4 of 6
@@ -1251,6 +1524,7 @@ function Certificate({ data, onBack }) {
 function TabBar({ active, onTab }) {
   const tabs = [
     { id: "learn", icon: "📚", label: "Learn" },
+    { id: "vocab", icon: "🗂️", label: "Vocab" },
     { id: "practice", icon: "🎮", label: "Practice" },
     { id: "listen", icon: "🎧", label: "Listen" },
     { id: "exam", icon: "🎓", label: "Exam" },
@@ -1332,6 +1606,11 @@ export default function App() {
     if (screen.name === "dictation") return <SubScreen headerProps={headerProps} onBack={closeScreen}><Dictation onXP={addXP} onBack={closeScreen} /></SubScreen>;
     if (screen.name === "listen") return <SubScreen headerProps={headerProps} onBack={closeScreen}><ListenChoose onXP={addXP} onBack={closeScreen} /></SubScreen>;
     if (screen.name === "numlisten") return <SubScreen headerProps={headerProps} onBack={closeScreen}><NumberListening onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "sentence") return <SubScreen headerProps={headerProps} onBack={closeScreen}><SentenceBuilder onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "conjugate") return <SubScreen headerProps={headerProps} onBack={closeScreen}><ConjugationTrainer onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "fillblank") return <SubScreen headerProps={headerProps} onBack={closeScreen}><FillBlank onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "speed") return <SubScreen headerProps={headerProps} onBack={closeScreen}><SpeedRound onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "gendersort") return <SubScreen headerProps={headerProps} onBack={closeScreen}><GenderSort onXP={addXP} onBack={closeScreen} /></SubScreen>;
     if (screen.name === "browse") {
       return (
         <SubScreen headerProps={headerProps} onBack={closeScreen}>
@@ -1420,6 +1699,38 @@ export default function App() {
     );
   }
 
+  if (tab === "vocab") {
+    body = (
+      <>
+        <div className="tab-hero">
+          <h1>🗂️ Vocabulary</h1>
+          <p className="hero-sub-dark">{Object.keys(VOCAB).length} categories · {Object.values(VOCAB).reduce((n, c) => n + c.words.length, 0)}+ words. Browse, drill, and test.</p>
+        </div>
+        <section>
+          <div className="section-head"><h2>⚡ Vocab practice</h2></div>
+          <div className="tool-grid">
+            <button className="tool" onClick={() => openScreen("pickcat-flash")}><span className="tool-icon">🃏</span>Flashcards</button>
+            <button className="tool" onClick={() => openScreen("pickcat-match")}><span className="tool-icon">🧩</span>Matching</button>
+            <button className="tool" onClick={() => openScreen("speed")}><span className="tool-icon">⚡</span>Speed round</button>
+            <button className="tool" onClick={() => openScreen("gendersort")}><span className="tool-icon">⚖️</span>Gender sort</button>
+          </div>
+        </section>
+        <section>
+          <div className="section-head"><h2>📂 Browse all categories</h2></div>
+          <div className="cat-grid">
+            {Object.entries(VOCAB).map(([k, c]) => (
+              <button key={k} className="cat-card" onClick={() => openScreen("catview", { cat: k })}>
+                <span className="cat-icon">{c.icon}</span>
+                <span className="cat-label">{c.label}</span>
+                <span className="cat-count">{c.words.length} words</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      </>
+    );
+  }
+
   if (tab === "practice") {
     body = (
       <>
@@ -1433,6 +1744,14 @@ export default function App() {
             <button className="tool" onClick={() => openScreen("pickcat-flash")}><span className="tool-icon">🃏</span>Flashcards</button>
             <button className="tool" onClick={() => openScreen("pickcat-match")}><span className="tool-icon">🧩</span>Matching</button>
             <button className="tool" onClick={() => openScreen("browse")}><span className="tool-icon">📚</span>Vocabulary list</button>
+          </div>
+        </section>
+        <section>
+          <div className="section-head"><h2>✍️ Grammar practice</h2></div>
+          <div className="tool-grid">
+            <button className="tool" onClick={() => openScreen("sentence")}><span className="tool-icon">🧩</span>Sentence builder<span className="tool-sub">Arrange word tiles</span></button>
+            <button className="tool" onClick={() => openScreen("conjugate")}><span className="tool-icon">⚙️</span>Conjugation<span className="tool-sub">Drill verb forms</span></button>
+            <button className="tool" onClick={() => openScreen("fillblank")}><span className="tool-icon">✏️</span>Fill the blank<span className="tool-sub">Complete sentences</span></button>
           </div>
         </section>
         <section>
@@ -1526,6 +1845,34 @@ export default function App() {
         <GlobalStyle />
         <div className="no-print"><AppHeader {...headerProps} /></div>
         <Certificate data={cert} onBack={closeScreen} />
+      </div>
+    );
+  }
+  // single category view
+  if (screen.name === "catview" && VOCAB[screen.cat]) {
+    const c = VOCAB[screen.cat];
+    return (
+      <div className="app">
+        <GlobalStyle />
+        <AppHeader {...headerProps} />
+        <button className="btn ghost small back" onClick={closeScreen}>← Back</button>
+        <div className="panel">
+          <span className="eyebrow">{c.icon} {c.label} · {c.words.length} words</span>
+          <div className="row gap" style={{ margin: "10px 0" }}>
+            <button className="btn ghost small" onClick={() => openScreen("flash", { cat: screen.cat })}>🃏 Flashcards</button>
+            <button className="btn ghost small" onClick={() => openScreen("match", { cat: screen.cat })}>🧩 Match</button>
+          </div>
+          <div className="vocab-list">
+            {c.words.map((w, i) => (
+              <div className="vocab-row" key={i}>
+                <span className={"vw" + (w.g ? " g-" + w.g : "")}>{w.pt}</span>
+                <span className="ve">{w.en}{w.hint ? ` · ${w.hint}` : ""}</span>
+                <Speak text={w.pt} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <TabBar active={tab} onTab={switchTab} />
       </div>
     );
   }
@@ -1739,6 +2086,47 @@ section{margin:20px 0}
 .cert-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
 .cert-note{font-size:10.5px;color:var(--muted);margin-top:18px;font-style:italic}
 @media print{.no-print{display:none!important}.app{padding:0}.cert-border{border-color:#000}}
+
+/* vocab category grid */
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px}
+.cat-card{display:flex;flex-direction:column;align-items:flex-start;gap:3px;background:#fff;border:1px solid var(--tilebd);border-radius:10px;padding:13px;font:inherit;cursor:pointer;transition:transform .12s,border-color .12s}
+.cat-card:hover{transform:translateY(-2px);border-color:var(--cobalt)}
+.cat-icon{font-size:24px}
+.cat-label{font-weight:700;font-size:14px;color:var(--deep);text-align:left}
+.cat-count{font-size:12px;color:var(--muted)}
+
+/* sentence builder */
+.sb-prompt{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:8px}
+.sb-en{font-family:'Fraunces',serif;font-size:19px;color:var(--deep);margin:2px 0 12px}
+.sb-answer{min-height:54px;border:2px dashed var(--tilebd);border-radius:10px;padding:9px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px;background:var(--sky)}
+.sb-placeholder{color:var(--muted);font-size:13px}
+.sb-bank{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:8px}
+.sb-tile{font:inherit;font-weight:600;font-size:15px;background:#fff;border:2px solid var(--cobalt);color:var(--deep);border-radius:8px;padding:8px 13px;cursor:pointer}
+.sb-tile.placed{background:var(--cobalt);color:#fff;border-color:var(--deep)}
+.sb-tile:disabled{opacity:.7}
+
+/* conjugation trainer */
+.conj-grid{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.conj-row{display:flex;align-items:center;gap:9px}
+.conj-pron{min-width:74px;font-weight:700;color:var(--deep);font-size:14px}
+.conj-input{flex:1;padding:9px}
+.conj-input.good{border-color:var(--ok);background:var(--ok-bg)}
+.conj-input.wrongbox{border-color:var(--bad);background:var(--bad-bg)}
+.conj-correct{color:var(--bad);font-weight:700;font-size:14px}
+
+/* cloze */
+.cloze-sentence{font-family:'Fraunces',serif;font-size:21px;color:var(--deep);margin:12px 0 4px;line-height:1.5}
+.cloze-gap{color:var(--tram-dk);font-weight:800;border-bottom:2px solid var(--tram)}
+
+/* speed round */
+.speed-word{font-family:'Fraunces',serif;font-size:30px;font-weight:800;color:var(--deep);text-align:center;padding:22px 10px;margin:12px 0;background:var(--sky);border:2px solid var(--tilebd);border-radius:12px;cursor:pointer;transition:background .15s}
+.speed-word.ok{background:var(--ok-bg);border-color:var(--ok)}
+.speed-word.bad{background:var(--bad-bg);border-color:var(--bad)}
+
+/* gender sort */
+.gender-word{font-family:'Fraunces',serif;font-size:30px;font-weight:800;color:var(--deep);text-align:center;padding:26px 10px;margin:14px 0;background:#fff;border:2px solid var(--tilebd);border-radius:12px;transition:background .2s}
+.gender-word.ok{background:var(--ok-bg);border-color:var(--ok)}
+.gender-word.bad{background:var(--bad-bg);border-color:var(--bad)}
 `}</style>
   );
 }
