@@ -39,6 +39,21 @@ const norm = (s) =>
     .replace(/\s+/g, " ")
     .trim();
 
+/* ---------- PROGRESS PERSISTENCE (saved on this device) ---------- */
+const loadSaved = (key, fallback) => {
+  try {
+    const v = window.localStorage.getItem("aprende-" + key);
+    return v !== null ? JSON.parse(v) : fallback;
+  } catch (e) {
+    return fallback; // storage unavailable (e.g. preview sandbox) — run in-memory
+  }
+};
+const saveProgress = (key, value) => {
+  try {
+    window.localStorage.setItem("aprende-" + key, JSON.stringify(value));
+  } catch (e) {}
+};
+
 /* =================== VOCABULARY DATABASE =================== */
 const VOCAB = {
   greetings: {
@@ -1044,10 +1059,20 @@ function UnitPlayer({ unit, onPass, onXP, onBack }) {
 /* =================== MAIN APP =================== */
 export default function App() {
   const [screen, setScreen] = useState({ name: "home" });
-  const [xp, setXp] = useState(0);
+  const [xp, setXp] = useState(() => loadSaved("xp", 0));
   const [streakBest, setStreakBest] = useState(0);
-  const [completed, setCompleted] = useState([]);
+  const [completed, setCompleted] = useState(() => loadSaved("completed", []));
   const [voiceOk, setVoiceOk] = useState(true);
+
+  useEffect(() => { saveProgress("xp", xp); }, [xp]);
+  useEffect(() => { saveProgress("completed", completed); }, [completed]);
+
+  const resetProgress = () => {
+    if (window.confirm("Reset all progress (XP and completed units)?")) {
+      setXp(0); setCompleted([]);
+      saveProgress("xp", 0); saveProgress("completed", []);
+    }
+  };
 
   useEffect(() => {
     if (!window.speechSynthesis) { setVoiceOk(false); return; }
@@ -1089,12 +1114,12 @@ export default function App() {
           <h1>Português Europeu</h1>
           <p className="hero-sub">A0 · Absolute beginner — built for life in Portugal 🇵🇹</p>
           <Bar value={xp} max={lvlMax} />
-          <div className="tiny center-text">{xp} / {lvlMax} XP to next level · progress lives in this session</div>
+          <div className="tiny center-text">{xp} / {lvlMax} XP to next level · progress is saved on this device</div>
           {!voiceOk && <div className="warn">⚠️ Your browser has no speech engine — audio buttons won't play. Try Chrome or Edge.</div>}
         </div>
 
         <section>
-          <div className="section-head"><h2>🇵🇹 Level A0 — Survival</h2><span className="tiny">{completed.length}/{UNITS.length} units</span></div>
+          <div className="section-head"><h2>🇵🇹 Level A0 — Survival</h2><span className="tiny">{completed.length}/{UNITS.length} units · pass each quiz with 4/6 to unlock the next</span></div>
           <div className="unit-list">
             {UNITS.map((u, i) => {
               const locked = i >= unlockedCount;
@@ -1141,7 +1166,12 @@ export default function App() {
             <button className="tool" onClick={() => go("browse")}><span className="tool-icon">📚</span>Vocabulary</button>
           </div>
         </section>
-        <footer className="foot">Aprende! · European Portuguese (pt-PT) · audio = your device's speech voice · A1 & A2 coming in Phase 2</footer>
+        <footer className="foot">
+          Aprende! · European Portuguese (pt-PT) · audio = your device's speech voice · A1 & A2 coming in Phase 2
+          <div style={{ marginTop: 8 }}>
+            <button className="btn ghost small" onClick={resetProgress}>↺ Reset progress</button>
+          </div>
+        </footer>
       </div>
     );
   }
