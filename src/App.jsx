@@ -3,6 +3,7 @@ import { A1_UNITS } from "./data/a1.js";
 import { A2_UNITS } from "./data/a2.js";
 import { EXAM_BANK, EXTRA_DIALOGUES, EXTRA_STORIES } from "./data/exam.js";
 import { VOCAB_EXTRA, SENTENCES, CLOZE, CONJ_VERBS, PRONOUN_LABELS } from "./data/vocab.js";
+import { VERBS, TENSE_INFO, PRONOUNS, CONJ_RULES, SER_ESTAR, NUMBER_REF, TOPICS } from "./data/verbs.js";
 
 /* ============================================================
    APRENDE! — European Portuguese · A0 → A1 → A2 + Final Exam
@@ -1520,13 +1521,229 @@ function Certificate({ data, onBack }) {
   );
 }
 
+/* =================== VERB LIBRARY =================== */
+function VerbLibrary({ onOpen }) {
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("all");
+  const filtered = VERBS.filter((v) => {
+    const matchQ = !q || v.inf.includes(norm(q)) || v.en.toLowerCase().includes(q.toLowerCase());
+    const matchF = filter === "all"
+      || (filter === "ar" && v.group === "-AR")
+      || (filter === "er" && v.group.startsWith("-ER"))
+      || (filter === "ir" && v.group.startsWith("-IR"))
+      || (filter === "irr" && !v.reg);
+    return matchQ && matchF;
+  });
+  return (
+    <div className="panel">
+      <span className="eyebrow">📕 Verb Library · {VERBS.length} verbs</span>
+      <input className="answer" style={{ width: "100%", margin: "10px 0" }} placeholder="🔎 Search a verb (e.g. comer, to eat)…"
+        value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="row gap" style={{ flexWrap: "wrap", marginBottom: 10 }}>
+        {[["all", "All"], ["ar", "-AR"], ["er", "-ER"], ["ir", "-IR"], ["irr", "Irregular"]].map(([f, l]) => (
+          <button key={f} className={"btn small " + (filter === f ? "primary" : "ghost")} onClick={() => setFilter(f)}>{l}</button>
+        ))}
+      </div>
+      <div className="verb-list">
+        {filtered.map((v) => (
+          <button key={v.inf} className="verb-row" onClick={() => onOpen(v.inf)}>
+            <span className="verb-inf">{v.inf}</span>
+            <span className="verb-en">{v.en}</span>
+            <span className={"verb-tag tag-" + (v.reg ? (v.group === "-AR" ? "ar" : v.group.startsWith("-ER") ? "er" : "ir") : "irr")}>
+              {v.reg ? v.group : "irreg."}
+            </span>
+          </button>
+        ))}
+        {filtered.length === 0 && <p className="muted">No verbs match “{q}”.</p>}
+      </div>
+    </div>
+  );
+}
+
+function VerbDetail({ inf, onBack }) {
+  const v = VERBS.find((x) => x.inf === inf);
+  const [tense, setTense] = useState("present");
+  if (!v) return null;
+  const t = v.tenses[tense];
+  const info = TENSE_INFO[tense];
+  return (
+    <div className="panel">
+      <div className="row between">
+        <span className="eyebrow">📖 {v.group}{v.reg ? " · regular" : " · irregular"}</span>
+        <button className="audio" onClick={() => speak(v.inf, 0.9)}>🔊</button>
+      </div>
+      <h2 className="verb-title">{v.inf} <span className="verb-title-en">— {v.en}</span></h2>
+
+      <div className="tense-tabs">
+        {Object.keys(TENSE_INFO).map((tk) => (
+          <button key={tk} className={"tense-tab" + (tense === tk ? " active" : "")} onClick={() => setTense(tk)}>
+            {TENSE_INFO[tk].label}
+          </button>
+        ))}
+      </div>
+      <div className="tense-note"><b>{info.en}</b> · {info.note}</div>
+
+      <div className="conj-table">
+        {PRONOUNS.map((p) => (
+          <div className="conj-trow" key={p.key}>
+            <span className="conj-tpron">{p.label}<span className="conj-tpron-en">{p.en}</span></span>
+            <span className="conj-tform">{t[p.key]}</span>
+            <button className="audio" onClick={() => speak((p.key === "eu" ? "eu" : p.key === "tu" ? "tu" : p.key === "ele" ? "ele" : p.key === "nos" ? "nós" : "eles") + " " + t[p.key], 0.9)}>🔊</button>
+          </div>
+        ))}
+      </div>
+      <button className="btn ghost wide" style={{ marginTop: 12 }} onClick={() => speak(PRONOUNS.map((p) => t[p.key]).join(", "), 0.85)}>▶ Play all forms</button>
+    </div>
+  );
+}
+
+/* =================== CONJUGATION RULES =================== */
+function ConjugationRules() {
+  const [g, setG] = useState(0);
+  const rule = CONJ_RULES[g];
+  return (
+    <div className="panel">
+      <span className="eyebrow">📐 Conjugation Rules</span>
+      <div className="row gap" style={{ margin: "10px 0" }}>
+        {CONJ_RULES.map((r, i) => (
+          <button key={i} className={"btn small " + (g === i ? "primary" : "ghost")} onClick={() => setG(i)}>{r.group}</button>
+        ))}
+      </div>
+      <div className={"rule-head rule-" + rule.color}>
+        <div className="rule-example">{rule.example}</div>
+        <p>{rule.intro}</p>
+      </div>
+      {rule.tenses.map((tn, i) => (
+        <div key={i} className="rule-block">
+          <h4 className="rule-tname">{tn.name}</h4>
+          <div className="rule-grid">
+            {tn.endings.map((e, j) => (
+              <div className="rule-row" key={j}>
+                <span className="rule-pron">{e[0]}</span>
+                <span className={"rule-ending end-" + rule.color}>{e[1]}</span>
+                <span className="rule-result">{e[2]} <button className="audio" onClick={() => speak(e[2], 0.9)}>🔊</button></span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* =================== SER vs ESTAR =================== */
+function SerEstar() {
+  return (
+    <div className="panel">
+      <span className="eyebrow">⚖️ Ser vs Estar — “to be”</span>
+      <p className="lesson-body" style={{ marginTop: 8 }}>{SER_ESTAR.intro}</p>
+
+      <h4 className="se-h">Present — I am, you are…</h4>
+      <div className="se-table">
+        <div className="se-head"><span>English</span><span>SER</span><span>ESTAR</span></div>
+        {SER_ESTAR.rows.map((r, i) => (
+          <div className="se-row" key={i}>
+            <span className="se-en">{r.en}</span>
+            <span className="se-cell">{r.ser} <button className="audio" onClick={() => speak(r.ser, 0.9)}>🔊</button></span>
+            <span className="se-cell">{r.estar} <button className="audio" onClick={() => speak(r.estar, 0.9)}>🔊</button></span>
+          </div>
+        ))}
+      </div>
+      <div className="se-examples">
+        {SER_ESTAR.rows.slice(0, 3).map((r, i) => (
+          <div key={i} className="se-ex"><b>{r.ser}</b>: {r.ex_ser} <span className="se-vs">·</span> <b>{r.estar}</b>: {r.ex_estar}</div>
+        ))}
+      </div>
+
+      <h4 className="se-h">Past — I was, you were…</h4>
+      <div className="se-table">
+        <div className="se-head"><span>English</span><span>SER</span><span>ESTAR</span></div>
+        {SER_ESTAR.pastRows.map((r, i) => (
+          <div className="se-row" key={i}>
+            <span className="se-en">{r.en}</span>
+            <span className="se-cell">{r.ser}</span>
+            <span className="se-cell">{r.estar}</span>
+          </div>
+        ))}
+      </div>
+      <p className="tiny" style={{ color: "var(--muted)", margin: "4px 0 10px" }}>Note: <b>fui/foi</b> = a defined moment; <b>era</b> = ongoing or description.</p>
+
+      <h4 className="se-h">Future — I will be…</h4>
+      <div className="se-table">
+        <div className="se-head"><span>English</span><span>SER</span><span>ESTAR</span></div>
+        {SER_ESTAR.futureRows.map((r, i) => (
+          <div className="se-row" key={i}>
+            <span className="se-en">{r.en}</span>
+            <span className="se-cell">{r.ser}</span>
+            <span className="se-cell">{r.estar}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="glossary" style={{ marginTop: 14 }}>
+        <div className="eyebrow">Rules of thumb</div>
+        {SER_ESTAR.tips.map((tip, i) => <div key={i} className="key-line">• {tip}</div>)}
+      </div>
+    </div>
+  );
+}
+
+/* =================== NUMBER REFERENCE =================== */
+function NumberReference() {
+  const Section = ({ title, rows }) => (
+    <div className="num-block">
+      <h4 className="se-h">{title}</h4>
+      <div className="num-grid">
+        {rows.map((r, i) => (
+          <div className="num-row" key={i}>
+            <span className="num-sym">{r.sym}</span>
+            <span className="num-pt">{r.pt} <button className="audio" onClick={() => speak(r.pt, 0.9)}>🔊</button></span>
+            <span className="num-en">{r.en}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  return (
+    <div className="panel">
+      <span className="eyebrow">🔢 Numbers Reference</span>
+      <Section title="Fractions" rows={NUMBER_REF.fractions} />
+      <Section title="Decimals & Percent" rows={NUMBER_REF.decimals} />
+      <Section title="Ordinals (1st, 2nd…)" rows={NUMBER_REF.ordinals} />
+      <Section title="Big numbers" rows={NUMBER_REF.big} />
+    </div>
+  );
+}
+
+/* =================== TOPIC VIEW =================== */
+function TopicView({ topic }) {
+  return (
+    <div className="panel">
+      <span className="eyebrow">{topic.icon} {topic.title}</span>
+      {topic.sections.map((s, i) => (
+        <div key={i} style={{ marginTop: 12 }}>
+          <h4 className="se-h">{s.h}</h4>
+          <div className="lesson-items">
+            {s.items.map((it, j) => (
+              <div className="lesson-item" key={j}>
+                <div className="li-pt">{it.pt} <Speak text={it.pt} /></div>
+                <div className="li-en">{it.en}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* =================== TAB BAR (stable, module-level) =================== */
 function TabBar({ active, onTab }) {
   const tabs = [
     { id: "learn", icon: "📚", label: "Learn" },
+    { id: "verbs", icon: "🔤", label: "Verbs" },
     { id: "vocab", icon: "🗂️", label: "Vocab" },
     { id: "practice", icon: "🎮", label: "Practice" },
-    { id: "listen", icon: "🎧", label: "Listen" },
     { id: "exam", icon: "🎓", label: "Exam" },
   ];
   return (
@@ -1611,6 +1828,8 @@ export default function App() {
     if (screen.name === "fillblank") return <SubScreen headerProps={headerProps} onBack={closeScreen}><FillBlank onXP={addXP} onBack={closeScreen} /></SubScreen>;
     if (screen.name === "speed") return <SubScreen headerProps={headerProps} onBack={closeScreen}><SpeedRound onXP={addXP} onBack={closeScreen} /></SubScreen>;
     if (screen.name === "gendersort") return <SubScreen headerProps={headerProps} onBack={closeScreen}><GenderSort onXP={addXP} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "verbdetail") return <SubScreen headerProps={headerProps} onBack={closeScreen}><VerbDetail inf={screen.inf} onBack={closeScreen} /></SubScreen>;
+    if (screen.name === "topic") return <SubScreen headerProps={headerProps} onBack={closeScreen}><TopicView topic={TOPICS.find((t) => t.id === screen.id)} /></SubScreen>;
     if (screen.name === "browse") {
       return (
         <SubScreen headerProps={headerProps} onBack={closeScreen}>
@@ -1699,6 +1918,38 @@ export default function App() {
     );
   }
 
+  if (tab === "verbs") {
+    body = (
+      <>
+        <div className="tab-hero">
+          <h1>🔤 Verbs &amp; Grammar</h1>
+          <p className="hero-sub-dark">{VERBS.length} verbs fully conjugated across 4 tenses, the -AR/-ER/-IR rules, ser vs estar, numbers and daily-life topics.</p>
+        </div>
+        <section>
+          <div className="section-head"><h2>📐 Reference</h2></div>
+          <div className="tool-grid">
+            <button className="tool" onClick={() => openScreen("rules")}><span className="tool-icon">📐</span>Conjugation rules<span className="tool-sub">-AR / -ER / -IR</span></button>
+            <button className="tool" onClick={() => openScreen("serestar")}><span className="tool-icon">⚖️</span>Ser vs Estar<span className="tool-sub">I am, was, will be</span></button>
+            <button className="tool" onClick={() => openScreen("numbers")}><span className="tool-icon">🔢</span>Numbers<span className="tool-sub">Fractions, decimals…</span></button>
+            <button className="tool" onClick={() => openScreen("conjugate")}><span className="tool-icon">⚙️</span>Practice drill<span className="tool-sub">Test yourself</span></button>
+          </div>
+        </section>
+        <section>
+          <div className="section-head"><h2>📕 Verb library</h2></div>
+          <VerbLibrary onOpen={(inf) => openScreen("verbdetail", { inf })} />
+        </section>
+        <section>
+          <div className="section-head"><h2>💬 Daily-life topics</h2></div>
+          <div className="chip-row">
+            {TOPICS.map((t) => (
+              <button key={t.id} className="chip" onClick={() => openScreen("topic", { id: t.id })}>{t.icon} {t.title}</button>
+            ))}
+          </div>
+        </section>
+      </>
+    );
+  }
+
   if (tab === "vocab") {
     body = (
       <>
@@ -1763,6 +2014,14 @@ export default function App() {
           </div>
         </section>
         <section>
+          <div className="section-head"><h2>🎧 Listening</h2></div>
+          <div className="tool-grid">
+            <button className="tool" onClick={() => openScreen("dictation")}><span className="tool-icon">🎧</span>Dictation<span className="tool-sub">Hear it, type it</span></button>
+            <button className="tool" onClick={() => openScreen("listen")}><span className="tool-icon">👂</span>Listen &amp; choose<span className="tool-sub">Hear, pick meaning</span></button>
+            <button className="tool" onClick={() => openScreen("numlisten")}><span className="tool-icon">💶</span>Prices by ear<span className="tool-sub">Numbers & prices</span></button>
+          </div>
+        </section>
+        <section>
           <div className="section-head"><h2>🗣️ Real-life dialogues</h2></div>
           <p className="level-blurb">Full conversations with audio — café, shop, office, pharmacy, restaurant and directions.</p>
           <div className="chip-row">
@@ -1771,28 +2030,6 @@ export default function App() {
             ))}
           </div>
         </section>
-      </>
-    );
-  }
-
-  if (tab === "listen") {
-    body = (
-      <>
-        <div className="tab-hero">
-          <h1>🎧 Listen</h1>
-          <p className="hero-sub-dark">Train your ear — the biggest advantage of living in Portugal. Every exercise speaks European Portuguese aloud.</p>
-        </div>
-        <section>
-          <div className="tool-grid">
-            <button className="tool tall" onClick={() => openScreen("dictation")}><span className="tool-icon">🎧</span>Dictation<span className="tool-sub">Hear it, type it</span></button>
-            <button className="tool tall" onClick={() => openScreen("listen")}><span className="tool-icon">👂</span>Listen & choose<span className="tool-sub">Hear a word, pick the meaning</span></button>
-            <button className="tool tall" onClick={() => openScreen("numlisten")}><span className="tool-icon">💶</span>Prices by ear<span className="tool-sub">Understand prices & numbers</span></button>
-          </div>
-        </section>
-        <div className="info-card">
-          <b>🔊 Audio tips for European Portuguese</b>
-          <p>Tap any 🔊 once to start (browsers need one tap first). Use 🐢 for slow playback — PT-PT swallows vowels, so slow practice helps a lot. On iPhone the voice “Joana” is built in; on Android install the Portuguese (Portugal) voice in Settings.</p>
-        </div>
       </>
     );
   }
@@ -1845,6 +2082,37 @@ export default function App() {
         <GlobalStyle />
         <div className="no-print"><AppHeader {...headerProps} /></div>
         <Certificate data={cert} onBack={closeScreen} />
+      </div>
+    );
+  }
+  // verb reference screens (no XP)
+  if (screen.name === "rules") {
+    return (
+      <div className="app">
+        <GlobalStyle /><AppHeader {...headerProps} />
+        <button className="btn ghost small back" onClick={closeScreen}>← Back</button>
+        <ConjugationRules />
+        <TabBar active={tab} onTab={switchTab} />
+      </div>
+    );
+  }
+  if (screen.name === "serestar") {
+    return (
+      <div className="app">
+        <GlobalStyle /><AppHeader {...headerProps} />
+        <button className="btn ghost small back" onClick={closeScreen}>← Back</button>
+        <SerEstar />
+        <TabBar active={tab} onTab={switchTab} />
+      </div>
+    );
+  }
+  if (screen.name === "numbers") {
+    return (
+      <div className="app">
+        <GlobalStyle /><AppHeader {...headerProps} />
+        <button className="btn ghost small back" onClick={closeScreen}>← Back</button>
+        <NumberReference />
+        <TabBar active={tab} onTab={switchTab} />
       </div>
     );
   }
@@ -2127,6 +2395,63 @@ section{margin:20px 0}
 .gender-word{font-family:'Fraunces',serif;font-size:30px;font-weight:800;color:var(--deep);text-align:center;padding:26px 10px;margin:14px 0;background:#fff;border:2px solid var(--tilebd);border-radius:12px;transition:background .2s}
 .gender-word.ok{background:var(--ok-bg);border-color:var(--ok)}
 .gender-word.bad{background:var(--bad-bg);border-color:var(--bad)}
+
+/* verb library */
+.verb-list{display:flex;flex-direction:column;gap:6px}
+.verb-row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--tilebd);border-radius:9px;padding:11px 12px;font:inherit;cursor:pointer;text-align:left}
+.verb-row:hover{border-color:var(--cobalt);background:var(--sky)}
+.verb-inf{font-weight:700;font-size:16px;color:var(--deep);min-width:34%}
+.verb-en{flex:1;font-size:13.5px;color:var(--muted)}
+.verb-tag{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px}
+.tag-ar{background:#E3EDFB;color:#1F4E96}
+.tag-er{background:#E8F1E8;color:#2E7D5B}
+.tag-ir{background:#FBEFE0;color:#A4651A}
+.tag-irr{background:#F6E3EC;color:#9B3D63}
+.verb-title{font-family:'Fraunces',serif;font-size:27px;color:var(--cobalt);margin:6px 0 10px}
+.verb-title-en{font-family:'Outfit',sans-serif;font-size:15px;color:var(--muted);font-weight:500}
+.tense-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.tense-tab{font:inherit;font-size:13px;font-weight:600;padding:7px 11px;border-radius:8px;border:1px solid var(--tilebd);background:#fff;color:var(--muted);cursor:pointer}
+.tense-tab.active{background:var(--cobalt);color:#fff;border-color:var(--deep)}
+.tense-note{background:var(--sky);border-radius:8px;padding:9px 11px;font-size:13px;color:var(--ink);margin-bottom:12px}
+.conj-table{display:flex;flex-direction:column;gap:6px}
+.conj-trow{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--tilebd);border-radius:9px;padding:10px 12px}
+.conj-tpron{min-width:42%;display:flex;flex-direction:column}
+.conj-tpron-en{font-size:11px;color:var(--muted)}
+.conj-tform{flex:1;font-weight:700;font-size:18px;color:var(--deep)}
+
+/* conjugation rules */
+.rule-head{border-radius:10px;padding:13px;margin-bottom:14px}
+.rule-head p{font-size:13.5px;margin-top:6px;line-height:1.5}
+.rule-ar{background:#E3EDFB}.rule-er{background:#E8F1E8}.rule-ir{background:#FBEFE0}
+.rule-example{font-family:'Fraunces',serif;font-size:20px;font-weight:800;color:var(--deep)}
+.rule-block{margin-bottom:14px}
+.rule-tname{font-size:15px;color:var(--cobalt);margin-bottom:6px;border-bottom:2px solid var(--tilebd);padding-bottom:3px}
+.rule-grid{display:flex;flex-direction:column;gap:4px}
+.rule-row{display:flex;align-items:center;gap:10px;font-size:14.5px;padding:3px 0}
+.rule-pron{min-width:30%;color:var(--muted)}
+.rule-ending{font-weight:800;min-width:64px}
+.end-ar{color:#1F4E96}.end-er{color:#2E7D5B}.end-ir{color:#A4651A}
+.rule-result{flex:1;font-weight:600;color:var(--deep)}
+
+/* ser vs estar */
+.se-h{font-size:15px;color:var(--cobalt);margin:14px 0 6px}
+.se-table{display:flex;flex-direction:column;border:1px solid var(--tilebd);border-radius:9px;overflow:hidden}
+.se-head,.se-row{display:grid;grid-template-columns:1fr 1.3fr 1.3fr;gap:6px;padding:8px 10px;font-size:13.5px;align-items:center}
+.se-head{background:var(--cobalt);color:#fff;font-weight:700;font-size:12px}
+.se-row:nth-child(even){background:var(--sky)}
+.se-en{color:var(--muted)}
+.se-cell{font-weight:600;color:var(--deep)}
+.se-examples{margin-top:10px;display:flex;flex-direction:column;gap:5px}
+.se-ex{font-size:13px;color:var(--ink);background:var(--sky);border-radius:7px;padding:7px 9px}
+.se-vs{color:var(--tram-dk);font-weight:800;margin:0 4px}
+
+/* numbers */
+.num-block{margin-bottom:8px}
+.num-grid{display:flex;flex-direction:column;gap:4px}
+.num-row{display:grid;grid-template-columns:60px 1fr 1fr;gap:8px;align-items:center;font-size:14px;padding:5px 0;border-bottom:1px dashed var(--tilebd)}
+.num-sym{font-weight:800;color:var(--cobalt);font-size:16px}
+.num-pt{font-weight:600;color:var(--deep)}
+.num-en{font-size:12.5px;color:var(--muted)}
 `}</style>
   );
 }
